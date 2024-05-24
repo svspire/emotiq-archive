@@ -73,7 +73,7 @@
   If PING-OTHERS is true, returns list of augmented-data or exception
   monads about live public keys on other machines.
   
-  If PING-OTHERS is false, just return list of hosts found in from the
+  If PING-OTHERS is false, just return list of hosts found in the
   Gossip testnet configuration.  
   
   The network connectivity test can be invoked via PING-OTHER-MACHINES

@@ -448,7 +448,7 @@ are in place between nodes.
              a specific node.")
    (graphid :initarg :graphid :initform +default-graphid+ :accessor graphid
             :documentation "Which graph should this message propagate through? Since nodes can be part of multiple
-             graphs, which identifies which set of neighbors to use when forwarding the message. +default-graphid+ will be the default ground
+             graphs, this identifies which set of neighbors to use when forwarding the message. +default-graphid+ will be the default ground
              graph which can be considered a 'physical' graph, while the rest are 'logical' but this is just a convention."))
   (:documentation "An initial message sent to a gossip network or gossip node. Some solicitations require replies;
     some don't."))
@@ -1464,7 +1464,7 @@ dropped on the floor.
               (edebug 1 node :ERROR error msg)
               (error error)))))))
 
-; I don't remember where the "k" in these names came from; I just needed a way to distinguish internal gossip
+; The "k" in these names came from the 'kind slot of messages; The "k" distinguishes internal gossip
 ;   method names from the API functions that use them. Probably oughta just put the API functions in a different package.
 (defmethod k-singlecast ((msg solicitation) thisnode srcuid)
   "Send a message to one and only one node. Application message is expected to be in (cdr args) of the solicitation.
