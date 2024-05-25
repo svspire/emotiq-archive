@@ -460,6 +460,9 @@ message locally somehow before forwarding it. Allowed values:
 -   `:gossip-tally` Increment the value of a given key by an increment amount.
     If no value for that key exists currently, set it to 1. No reply expected.
 
+-   `:timeout` Timeouts are a special kind of message in the gossip protocol,
+    and they're typically sent by a special timer thread.
+
 [[more kinds deal with replies. Document them later.]]
 
  
@@ -477,6 +480,23 @@ Note that some of the above are useful to domain programmers in their own right,
 like `#'gossip-relate` and `#'gossip-relate-unique`. Domain programmers with
 more specialized needs for local message handling should specialize
 `#'application-handler`.
+
+ 
+
+Timeouts
+--------
+
+ 
+
+`*master-timer*` agent sends `system-async` msg with `kind=:timeout` to
+gossip-node. Node looks up `solicitation-uid` of msg in its `timeout-handlers`.
+If it finds one, it calls it with an arg of t (because it timed out). This
+implies that the `*master-timer*` has to send a :timeout message with that exact
+`solicitation-uid`. Timeout-handler typically comes from
+`#'make-timeout-handler`, which returns a lambda that deals with timeouts.
+Typically to clean up stuff that was waiting on a reply.
+
+ 
 
  
 
