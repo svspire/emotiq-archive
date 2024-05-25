@@ -316,7 +316,7 @@ Logging
 The way we can watch what's going on is through `*log*`. `*logging-actor*` is
 itself
 
-an actor. Its default operation is `'actors:do-nothing`.  If you want logging to
+an actor. Its default operation is `'actors:do-nothing`. If you want logging to
 actually work, do this:
 
 `(setf *logging-actor* (ac:make-actor 'actor-logger-fn))`
@@ -338,6 +338,12 @@ gossip message.
 
 `#'log-exclude`, `#'log-include` Return predicates that can be assigned to
 `*log-filter*`.
+
+`#'edebug` Adds a message to the log if its first parameter is \<
+`*debug-level*` or if `*debug-level*` is t. Second parameter can be a string or
+a gossip-node, in which case that node's logfn (which is usually
+`#'default-logging-function`) is called. Filtering only applies here in the
+second case.
 
  
 
@@ -406,7 +412,7 @@ Percolation
 -----------
 
 How do messages percolate through the network? Two slots in every message
-control how this works: `forward-to `and `kind`.
+control how this works: `forward-to`and `kind`.
 
 The `forward-to` slot determines how many downstream nodes of the current node
 will have the current message forwarded to them. Allowed values:
@@ -442,8 +448,8 @@ message locally somehow before forwarding it. Allowed values:
     expected.
 
 -   `:gossip-relate-unique` Like `:gossip-relate` but if a previous value for
-    given key exists in node, replace it with new value. No reply expected.**
-    This operation is destructive***.*
+    given key exists in node, replace it with new value. No reply expected.
+    **This operation is destructive***.*
 
 -   `:gossip-remove-key` Removes key/value pair on this node and then forwards
     according to `'forward-to`. **This is a destructive operation** -- any node
@@ -616,13 +622,13 @@ queue. [[actually the dispatch function is a lambda wrapped around
 `#'gossip-dispatcher`, and for clarity that should probably be replaced by an
 :around method on `#'gossip-dispatcher.`]]
 
-\#'gossip-dispatcher makes sure the first element of the message is ':gossip,
+`#'gossip-dispatcher` makes sure the first element of the message is `:gossip`,
 checks that there is indeed a gossip-node that contains this actor, extracts the
 `srcuid` which should be the second element of the original message, and calls
 `#'deliver-gossip-msg` on the third element of the original message.
 
-*In other words* the message the actor sees is (:gossip srcuid
-\#\<gossip-message-mixin\>). It's just the gossip-message prepended with the UID
+*In other words* the message the actor sees is` (:gossip srcuid
+#<gossip-message-mixin>)`. It's just the gossip-message prepended with the UID
 of the source gossip-node and the keyword :gossip.
 
 `#'deliver-gossip-msg` expects to see the true gossip-message as its first
@@ -638,7 +644,7 @@ would reduce the consing that messages in transit now incur.]]
 `#'deliver-gossip-msg` also takes care of sending messages across the network in
 the case of proxy-gossip-nodes.
 
-(There's a function called `#'incoming-message-handler `which is strictly for
+(There's a function called `#'incoming-message-handler`which is strictly for
 handling messages that come in across the network from another machine. This
 function routes such messages to the proper node on the local machine.)
 
@@ -680,7 +686,7 @@ There are two mechanisms of application-handlers: `#'application-handler` and
 Again, the application-handlers are only called when a node receives a message
 and *something in addition to forwarding the message* is required of the node.
 Thus the application-handlers are only called if the node decides it needs to
-read and act on the message locally. Sometimes it does so *and *forwards the
+read and act on the message locally. Sometimes it does so *and* forwards the
 message (e.g. in the case of `:k-multicast`) and sometimes it does the first XOR
 the second (e.g. `:k-singlecast`).
 

@@ -29,6 +29,7 @@
 (defvar *hmac-keypair* nil "Keypair for this running instance. Should only be written to by *hmac-keypair-actor*")
 (defvar *hmac-keypair-lock* (mpcompat:make-lock) "Lock for *hmac-keypair*")
 (defvar *hmac-keypair-actor* nil "Actor managing *hmac-keypair*")
+(defvar *solicitation-class* 'solicitation "Standard solicitation class. Bind this for specialized uses.")
 
 ; TODO: Document what uber-network and uber-set mean. See note H.
 
@@ -462,7 +463,7 @@ are in place between nodes.
     some don't."))
 
 (defun make-solicitation (&rest args)
-  (apply 'make-instance 'solicitation args))
+  (apply 'make-instance *solicitation-class* args))
 
 (defmethod neighborcast? ((msg solicitation))
   "True if message is requesting neighborcast protocol"
@@ -1328,7 +1329,6 @@ dropped on the floor.
 (defun forward (msg srcuid destuids)
   "Sends msg from srcuid to multiple destuids. Returns nil if successful; error otherwise."
   (setf srcuid (as-uid srcuid))
-
   (let ((failure (reduce (lambda (x destuid)
                            (or x (send-msg msg destuid srcuid)))
                          destuids

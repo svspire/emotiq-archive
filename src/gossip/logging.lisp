@@ -3,7 +3,7 @@
 (defvar *log* nil "Log of gossip actions.")
 (defvar *logging-actor* 'ac:do-nothing "Actor which serves as gatekeeper to *log* to ensure absolute serialization of log messages and no resource contention for *log*.")
 (defvar *archived-logs* (make-array 10 :adjustable t :fill-pointer 0) "Previous historical logs")
-(defparameter *log-filter* t "t to log all messages; nil to log none")
+(defparameter *log-filter* t "t to log all messages; nil to log none. If fn, it should be a predicate that determines whether to log given message.")
 (defparameter *log-object-extension* ".log" "File extension for object-based logs")
 (defparameter *log-string-extension* ".txt" "File extension for string-based logs")
 (defvar *debug-level* 1 "True to log debugging information while handling gossip requests. Larger values log more messages.")
