@@ -1,9 +1,10 @@
 ;; quick-and-dirty test of gossip protocol
+;; This only works with simple-gossip, which is obsolete!
 
 (ql:quickload :gossip)
 (in-package :gossip)
 (make-graph 10) ; make a connected graph with 10 nodes
-(visualize-nodes *nodes*) ; only if you've installed graphviz
+(visualize-nodes +default-graphID+) ; only if you've installed graphviz
 (run-gossip-sim)
 (solicit (first (listify-nodes)) :announce :foo)
 (inspect *log*)

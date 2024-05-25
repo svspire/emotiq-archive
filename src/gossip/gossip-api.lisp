@@ -85,7 +85,7 @@
     ((integerp style)           (gossipcast message :graphID graphID :startnodeID startnodeID :howmany style :kind kind))
     (t (error "Invalid style ~S" style))))
 
-; This needs to replace ping-other-machines for bootstrapping. Need to invent a singlecast hello message mechanism.
+; NDY: This needs to replace ping-other-machines for bootstrapping. Need to invent a singlecast hello message mechanism.
 (defun request-hello ()
   "Ask other hosts (not nodes, but hosts) to respond to me (my node) with a singlecast (not broadcast) hello message"
   )

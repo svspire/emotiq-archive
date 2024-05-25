@@ -97,7 +97,7 @@
     (t (apply 'default-logging-function items))))
 
 (defun default-logging-function (logcmd &rest args)
-  "Default logger for nodes. Filters using the *log-filter* mechanism."
+  "Default logger for gossip nodes. Filters using the *log-filter* mechanism."
   (when *log-filter*
     (when (or (eq t *log-filter*)
               (funcall *log-filter* logcmd))

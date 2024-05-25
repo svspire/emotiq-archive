@@ -67,7 +67,12 @@
 
 (defvar *ll-application-handler* nil "Set to a function to be called when the API methods reach their target.")
 
-
+(defmacro with-protocol-style ((kind &optional (n 2)) &body body)
+  ; Use this rather than set-protocol-style directly, as this binds/unbinds the proper globals properly
+  `(let ((*use-all-neighbors* *use-all-neighbors*)
+         (*active-ignores* *active-ignores*))
+     (set-protocol-style ,kind ,n)
+     ,@body))
 
 ;; ------------------------------------------------------------------------------
 ;; Generic handling for expected authenticated messages. Check for
@@ -129,13 +134,15 @@ in KEYWORDS removed."
 ; Case 3: *use-all-neighbors* = true and *active-ignores* = true. More messages than necessary. NOW A FORBIDDEN CASE.
 ; Case 4: *use-all-neighbors* = 1 and *active-ignores* = false. Lots of timeouts. Poor results. NOW A FORBIDDEN CASE.
 
-;;; DEPRECATE. Use forward-to slot on messages for this now.
+;;; DEPRECATE. Use forward-to slot on messages for this now, which is how newer functions like #'broadcast work.
+;;;   Or use with-protocol-style, which only temporarily binds the globals.
 (defun set-protocol-style (kind &optional (n 2))
   "Set style of protocol.
    :gossip style to pick one neighbor at random to send solicitations to.
       There's no guarantee this will reach all nodes. But it's quicker and more realistic.
    :neighborcast   style to send solicitations to all neighbors. More likely to reach all nodes but replies may be slower.
-   Neither style should result in timeouts of a node waiting forever for a response from a neighbor."
+   Neither style should result in timeouts of a node waiting forever for a response from a neighbor.
+   Domain code should not call this directly--use with-protocol-style instead."
   (case kind
     (:gossip (setf *use-all-neighbors* n
                    *active-ignores* t))  ; must be true when *use-all-neighbors* is nil. Otherwise there will be timeouts.
@@ -232,6 +239,7 @@ are in place between nodes.
 (defun remote-real-uids ()
   "Returns a list of UIDs representing real nodes known to be resident on other machines."
   (mapcar 'uid (remote-real-nodes)))
+
 (defun uber-set ()
   "Returns a complete list of UIDs of real nodes known on both this machine and other machines.
   Note that some members of the list may point to [permanent] proxies on this machine."
@@ -764,9 +772,9 @@ are in place between nodes.
     (when node (uid node))))
 
 ;;;; Graph making routines. Mostly just for testing and simulation, because these only work on local machine.
-(defun make-nodes (numnodes)
+(defun make-nodes (numnodes &optional (type ':gossip))
   (dotimes (i numnodes)
-    (make-node ':gossip)))
+    (make-node type)))
 
 (defun listify-nodes ()
   (local-nodes-matching t))
@@ -795,6 +803,9 @@ are in place between nodes.
   (pushnew (uid node2) (neighborhood node1 graphID)))
   
 (defmethod connected? ((node1 gossip-node) (node2 gossip-node) &optional (graphID +default-graphid+))
+  ;;; NDY: Should this be and rather than or? If and is false but or is true, it means there's
+  ;;;      a one-way connection, which should (maybe?) be considered a mistake unless part
+  ;;;      of the mission of the nodes is to figure out their neighborhoods.
   (or (member (uid node2) (neighborhood node1 graphID) :test 'uid=)
       ; redundant if we connected the graph correctly in the first place
       (member (uid node1) (neighborhood node2 graphID) :test 'uid=)))
@@ -1424,18 +1435,18 @@ dropped on the floor.
   (let ((content (first (args msg))))
     (declare (ignore content))
     ; thisnode becomes new source for forwarding purposes
-    (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg)))))
+    (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
 
 ;;; These are the message kinds used by the high-level application programmer's gossip api.
 
 (defgeneric lowlevel-application-handler (node)
   (:documentation "Returns something that actor-send can send to, which is associated with node.
-   This is used by gossip to forward an raw gossip-message-mixin once it reaches its destination node.
+   This is used by gossip to forward a raw gossip-message-mixin once it reaches its destination node.
    Function should accept 2 args: node and gossip-message-mixin."))
 
 (defgeneric application-handler (node)
   (:documentation "Returns something that actor-send can send to, which is associated with node.
-    This is used by gossip to forward an application message to its application destination
+    This is used by gossip to forward an application message to its local application destination
     once it reaches its destination node.
     Function should accept &rest application-message."))
 
@@ -1470,7 +1481,7 @@ dropped on the floor.
   "Send a message to one and only one node. Application message is expected to be in (cdr args) of the solicitation.
   Destination node is expected to be in (car args) of the solicitation.
   Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
-  Every intermediate node will have the message forwarded through it but message will not be 'delivered' to intermediate nodes.
+  Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
   Destination node is not expected to reply (at least not with builtin gossip-style replies)."
   (if (uid= (uid thisnode) (car (args msg)))
       (handoff-to-application-handlers thisnode msg (lambda (msg) (cdr (args msg))))
@@ -1503,7 +1514,7 @@ dropped on the floor.
 
 (defmethod k-dissolve ((msg solicitation) thisnode srcuid)
   "Commands every node it passes through to dissolve connections associated with a given graphID.
-   Always uses full neighborcast, no matter what the message says."
+   Always uses full neighborcast, i.e. ignores the forward-to slot of the message."
   (forward msg thisnode (get-downstream thisnode srcuid t (graphID msg)))
   ; must dissolve _after_ forwarding, of course
   (dissolve-neighborhood thisnode (graphID msg)))
@@ -1518,8 +1529,7 @@ dropped on the floor.
 (defmethod gossip-relate ((msg solicitation) thisnode srcuid)
   "Establishes a global non-unique key/value pair. If key currently has a value or set of values,
    new value will be added to the set; it won't replace them.
-  Sets value on this node and then forwards 
-  solicitation to other nodes, if any.
+  Sets value in this node's local-kvs and then forwards solicitation to other nodes, if any.
   No reply expected."
   (destructuring-bind (key value &rest other) (args msg)
     (declare (ignore other))

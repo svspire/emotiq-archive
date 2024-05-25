@@ -139,6 +139,9 @@ an error when it fails, so we have to wrap an ignore-errors around the call.
           (t (error "Cannot locate graphviz sfdp command. Please install graphviz first.")))))
 
 (defun visualize-nodes (&optional (graphID +default-graphID+))
+  (unless (or (symbolp graphID)
+              (stringp graphID))
+    (error "GraphID must be a symbol or string. Here it's ~S" graphID))
   (%visualize-nodes (listify-nodes) graphID))
 
 (defparameter *html-header*
