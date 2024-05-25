@@ -1,0 +1,5021 @@
+<h2>Documentation for package :GOSSIP</h2>
+<i>This documentation was created by <a href=https://github.com/svspire/cl-simpledoc>cl-simpledoc</a></i>
+<p>
+<h3 style="color:green;">External Symbols</h3>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*ll-application-handler* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Set to a function to be called when the API methods reach their target.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*log* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Log of gossip actions.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*log-filter* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>t to log all messages; nil to log none</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*nodes* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Table for mapping node UIDs to nodes known by local machine</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-handler-case </font>(form &amp;rest clauses)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Macro]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Use this when you're tempted to use handler-case.
+   Because sometimes you really do want a backtrace when an error happens.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="gossip-node"><B><code><font size=+1>gossip-node </font>(<a href="#abstract-gossip-node">abstract-gossip-node</a> <a href="#actor-mixin">actor-mixin</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>actor</pre></TD><TD ALIGN=LEFT>Actor for this node</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>logfn</pre></TD><TD ALIGN=LEFT>If non-nil, assumed to be a function called with every
+              message seen to log it.</TD>
+</TR>
+<TR>
+<TD><pre>temporary-p</pre></TD><TD ALIGN=LEFT>True if this node should be considered temporary, i.e. should not be
+           found by many functions that look for node in the local node table. (Eventually, temporary
+           nodes should be stored in a separate, weak hash table.)</TD>
+</TR>
+<TR>
+<TD><pre>message-cache</pre></TD><TD ALIGN=LEFT>Cache of seen messages. Table mapping UID of message to UID of upstream sender.
+          Used to ensure identical messages are not acted on twice, and to determine where
+          replies to a message should be sent in case of :UPSTREAM messages.</TD>
+</TR>
+<TR>
+<TD><pre>repliers-expected</pre></TD><TD ALIGN=LEFT>2-level Hash-table mapping a solicitation id to another hashtable of srcuids
+          that I expect to reply to that solicitation. Values in second hashtable are either interim replies
+          that have been received from that srcuid for the given solicitation id.
+          Only accessed from this node's actor thread. No locking needed.
+          See Note B below for more info.</TD>
+</TR>
+<TR>
+<TD><pre>reply-cache</pre></TD><TD ALIGN=LEFT>Hash-table mapping a solicitation id to some data applicable to THIS node
+          for that solicitation. Only accessed from this node's actor
+          thread. No locking needed. Only used for duration of a solicitation/reply cycle.</TD>
+</TR>
+<TR>
+<TD><pre>local-kvs</pre></TD><TD ALIGN=LEFT>Local persistent key/value store for this node. Put long-lived global state data here.</TD>
+</TR>
+<TR>
+<TD><pre>neighbors</pre></TD><TD ALIGN=LEFT>Table of lists of UIDs of direct neighbors of this node. This is the mechanism that establishes
+              the connectivity of the node graph. Table is indexed by graphID.</TD>
+</TR>
+<TR>
+<TD><pre>timers</pre></TD><TD ALIGN=LEFT>Table mapping solicitation uids to a timer dealing with replies to that uid.</TD>
+</TR>
+<TR>
+<TD><pre>timeout-handlers</pre></TD><TD ALIGN=LEFT>Table of functions of 1 arg: timed-out-p that should be
+           called to clean up after waiting operations are done. Keyed on solicitation id.
+           Timed-out-p is true if a timeout happened. If nil, it means operations completed without
+           timing out.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="proxy-gossip-node"><B><code><font size=+1>proxy-gossip-node </font>(<a href="#abstract-gossip-node">abstract-gossip-node</a> <a href="#actor-mixin">actor-mixin</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>A local [to this process] standin for a real gossip-node located elsewhere.
+              All we know about it is its UID and address, which is enough to transmit a message to it.
+              Proxy nodes never have neighbors.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>actor</pre></TD><TD ALIGN=LEFT>Actor for this node</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>logfn</pre></TD><TD ALIGN=LEFT>If non-nil, assumed to be a function called with every
+              message seen to log it.</TD>
+</TR>
+<TR>
+<TD><pre>temporary-p</pre></TD><TD ALIGN=LEFT>True if this node should be considered temporary, i.e. should not be
+           found by many functions that look for node in the local node table. (Eventually, temporary
+           nodes should be stored in a separate, weak hash table.)</TD>
+</TR>
+<TR>
+<TD><pre>real-address</pre></TD><TD ALIGN=LEFT>Real IP or DNS address of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-port</pre></TD><TD ALIGN=LEFT>Real port of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-uid</pre></TD><TD ALIGN=LEFT>UID of the (real) gossip node on the other end.
+               This proxy node will also have its own UID just for local lookup purposes,
+               but the real-uid is used to route it to the proper node on the remote
+               machine.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>archive-log </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Archive existing *log* and start a new one. Thread-safe.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>as-hash-table </font>(test alist)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Builds a hash table from an alist</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>broadcast </font>(message &amp;key (style 'neighborcast) (graphid +default-graphid+) startnodeid (kind 'k-multicast))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>High-level API for broadcasting a message along a graph.
+   If startnodeID is provided, it will be used as the starting node.
+   If startnodeID is not provided, we'll start at some locally-known node that's part of given graphID.
+   Use style = :neighborcast for most reliable transport.
+   Use style = :gossip or some small integer (like 2 or 3) for better scalability on large graphs, at expense of some reliability.
+   (An integer--if supplied--represents the maximum number of a node's neighbors to forward the message to.
+    :neighborcast means 'use all the neighbors'. :gossip means 'use up to 2 neighbors'.)
+   Normally an API programmer should let :kind default.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>clear-local-nodes </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Delete all knowledge of local real and proxy nodes. Usually used only for testing and startup.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>deserialize-log </font>(path)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Deserialize object-based log file at path</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>dissolve-graph </font>(graphid &amp;key startnodeid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Dissolves all connections (arcs) associated with graphID.
+  Starts at startnodeID if given; otherswise it finds one to start with.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>edebug </font>(level tag &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Syntactic sugar for wrapping debug-level around a log-event call</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ensure-pinger-daemon </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Ensure the existence of a background daemon that pings other machines until we're
+  convinced we're connected to the outside world.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>eripa </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Return externally-routable ip address of this machine. This is the primary user function.
+  Caches result for quick repeated use.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>establish-broadcast-group </font>(list-of-nodeids &amp;key graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>High-level API call. Decides itself whether
+   star or gossip is best, based on number of nodes, etc. (Large number of nodes suggests
+   gossip is better.)
+   If given graphID exists on any of these nodes, all connections on that graphID will be destroyed first.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-live-uids </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of live keys. Second value returned is a universal-time of last time
+   the list was refreshed.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-protocol-style </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Get style of protocol. See set-protocol-style.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-init </font>(&amp;optional (cmd))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Call this once before using gossip system. Should return true if everything succeeded.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-startup </font>(&amp;key (ping-others nil))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Reads initial testnet configuration optionally attempting a basic connectivity test
+  
+  If PING-OTHERS is true, returns list of augmented-data or exception
+  monads about live public keys on other machines.
+  
+  If PING-OTHERS is false, just return list of hosts found in from the
+  Gossip testnet configuration.  
+  
+  The network connectivity test can be invoked via PING-OTHER-MACHINES
+  with this list if desired.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>listify-nodes </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>lookup-node </font>(uid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-graph </font>(numnodes &amp;key (fraction 0.5) (graphid +default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Build a graph with numnodes nodes. Strategy here is to first connect all the nodes in a single
+   non-cyclic linear path, then add f*n random edges, where n is the number of nodes.
+   If graphID is not = +default-graphid+, a new graph will be created out of existing nodes
+   in addition to any existing graph(s) and numnodes will be ignored.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>measure-timing </font>(logcmd &amp;optional (log *log*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns maximum time elapsed between first log entry [of any type] and last of type logcmd.
+   It's a good idea to call #'archive-log before using this to ensure you start with a fresh log.
+   Assumes first element of every log entry is a timestamp with microsecond resolution.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>memoize-node </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Ensure this node is memoized on *nodes*</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ping-other-machines </font>(&amp;optional (hosts *hosts*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Find what other machines are alive.
+   Returns a list of augmented-data or exception monads about live UIDs on other machines.
+   You can map unwrap on these things to get at the real data.
+   Result can be queried by using #'remote-real-uids.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>random-node </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Only used for testing</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>run-gossip </font>(&amp;optional (archive-log t))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Archive the current log and clear it.
+   Prepare all nodes for new simulation.
+   Only necessary to call this once, or
+   again if you change the graph or want to start with a clean log.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-log </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Saves current *log* to a file. Thread-safe.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-text-log </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Saves current *log* to a file. Thread-safe.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>set-protocol-style </font>(kind &amp;optional (n 2))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Set style of protocol.
+   :gossip style to pick one neighbor at random to send solicitations to.
+      There's no guarantee this will reach all nodes. But it's quicker and more realistic.
+   :neighborcast   style to send solicitations to all neighbors. More likely to reach all nodes but replies may be slower.
+   Neither style should result in timeouts of a node waiting forever for a response from a neighbor.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>shutdown-gossip-server </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Stop the Gossip Transport network endpoint (if currently running).</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>singlecast </font>(message nodeid &amp;key graphid (howmany 2) startnodeid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>High-level API for sending message to given single nodeID. If graphID
+   is supplied, message will be forwarded along the graph, starting
+   with some locally-known node that's part of that graph.
+   If graphID is not supplied, a direct connection to nodeID will
+   be attempted and used.
+   If you want to use the default graph, you must explicitly pass +default-graphid+ in graphID.
+   Howmany is only used if graphID is supplied.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>solicit </font>(node kind &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Send a solicitation to the network starting with given node. This is the primary interface to 
+  the network to start an action from the outside. Nodes shouldn't use this function to initiate an
+  action because they should set the srcuid parameter to be their own rather than nil.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>solicit-direct </font>(node kind &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Like solicit-wait but asks for all replies to be sent back to node directly, rather than percolated upstream.
+  Don't use this on messages that don't expect a reply, because it'll wait forever.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>solicit-progress </font>(node kind &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Like solicit-wait but prints periodic progress log messages (if any)
+  associated with this node to listener.
+  Don't use this on messages that don't expect a reply, because it'll wait forever.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>solicit-wait </font>(node kind &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Like solicit but waits for a reply. Only works for :UPSTREAM replies.
+  Don't use this on messages that don't expect a reply, because it'll wait forever.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>visualize-nodes </font>(&amp;optional (graphid +default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>application-handler </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns something that actor-send can send to, which is associated with node.
+    This is used by gossip to forward an application message to its application destination
+    once it reaches its destination node.
+    Function should accept &amp;rest application-message.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>application-handler ((node <a href="#abstract-gossip-node">abstract-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Default method</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>initialize-node </font>(node &amp;key)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initialize-node ((node <a href="#gossip-node">gossip-node</a>) &amp;key pkey skey)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>locate-local-uid-for-graph </font>(graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns UID of some local real node that's part of given graphID, if any</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>locate-local-uid-for-graph (graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>locate-local-uid-for-graph ((graphid (:eql :uber)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Every local real node and every local permanent proxy is part of the :UBER set by definition.
+   But here we only want to return a real node. No proxies allowed.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-node </font>(kind &amp;rest rest &amp;key &amp;allow-other-keys)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>make-node ((kind (:eql :gossip)) &amp;rest rest &amp;key pkey skey &amp;allow-other-keys)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>uid </font>(uid-slot)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>uid ((arg-0 <a href="#uid-slot">uid-slot</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>unwrap </font>(monad)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>The inverse of unit. If monad contains more than 1 primitive data slot, this should return
+    them as multiple values.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>unwrap (object)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>unwrap ((ex <a href="#exception">exception</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>unwrap ((ad <a href="#augmented-data">augmented-data</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>unwrap ((monad <a href="#monad">monad</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+<hr>
+<h3 style="color:red;">Internal Symbols</h3>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*active-ignores* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True to reply to sender when we're ignoring a message from that sender.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*actual-tcp-gossip-port* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Local gossip TCP network port actually in use</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*actual-udp-gossip-port* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Local gossip UDP network port actually in use</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*archived-logs* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Previous historical logs</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*debug-level* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True to log debugging information while handling gossip requests. Larger values log more messages.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*default-uid-style* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>:tiny, :short, or :long. :short is shorter; :long is more comparable with other emotiq code.
+       :tiny should only be used for testing, documentation, and graph visualization of nodes on a single machine since it creates extremely short UIDs
+        that are not expected to be globally-unique.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*delay-interim-replies* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True to delay interim replies.
+  Should be true, especially on larger networks. Reduces unnecessary interim-replies while still ensuring
+  some partial information is propagating in case of node failures.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*direct-reply-max-seconds-to-wait* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Max seconds to wait for direct replies</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*eripa* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Externally-routable IP address (or domain name) for this machine, if known</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*gossip-absorb-errors* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True for normal use; nil for debugging</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*graphviz-command* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Location of graphviz sfdp program</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*graphviz-command-location-punt* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Best guess as to location of sfdp program if find-sfdp fails</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*hmac-keypair* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Keypair for this running instance. Should only be written to by *hmac-keypair-actor*</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*hmac-keypair-actor* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Actor managing *hmac-keypair*</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*hmac-keypair-lock* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Lock for *hmac-keypair*</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*hosts* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Cached hosts as read from configuration (minus the local machine)</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*html-footer* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*html-header* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*incoming-mailbox* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Destination for incoming objects off the wire. Should be an actor in general. Mailbox is only for testing.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*last-tiny-uid* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Simple counter for making UIDs</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*last-uid* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Simple counter for making UIDs. Only used for :short style UIDs.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*log-object-extension* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>File extension for object-based logs</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*log-string-extension* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>File extension for string-based logs</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*logging-actor* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Actor which serves as gatekeeper to *log* to ensure absolute serialization of log messages and no resource contention for *log*.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*max-buffer-length* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*max-message-age* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Messages older than this number of microseconds will be ignored</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*max-seconds-to-wait* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Max seconds to wait for all replies to come in</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*max-server-tries* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>How many times we can try finding an unused local server port before we give up. 1 to only try once.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*maximum-redirects* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*shutdown-msg* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>shutdown</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*shutting-down* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True to shut down gossip-server</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*tcp-gossip-server-name* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*tcp-gossip-socket* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Local passive TCP gossip socket, if any</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*transport* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Network transport endpoint.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*udp-gossip-server-name* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*udp-gossip-socket* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Local passive UDP gossip socket, if any</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>*use-all-neighbors* </font></code></B>
+<TD ALIGN=RIGHT><I>[Variable]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True to broadcast to all neighbors; nil for none (no forwarding).
+                                       Can be an integer to pick up to n neighbors.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>+default-graphid+ </font></code></B>
+<TD ALIGN=RIGHT><I>[Constant]</I></TD></TR>
+<TR><TD><i>Value: </i>root</TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Identifier of the default, root, ground, or 'physical' graph that a node is always part of</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>as-uid </font>(thing)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Macro]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>If thing has a UID, retrieve it. Otherwise assume it's already a UID.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>with-authenticated-packet </font>((packet-arg) deserializer &amp;body body)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Macro]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Macro to simplify decoding and authentication</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>with-keywords-removed </font>((var keywords &amp;optional (new-var var)) &amp;body body)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Macro]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>binds NEW-VAR (defaults to VAR) to VAR with the keyword arguments specified
+in KEYWORDS removed.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="abstract-gossip-node"><B><code><font size=+1>abstract-gossip-node </font>(<a href="#uid-slot">uid-slot</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>logfn</pre></TD><TD ALIGN=LEFT>If non-nil, assumed to be a function called with every
+              message seen to log it.</TD>
+</TR>
+<TR>
+<TD><pre>temporary-p</pre></TD><TD ALIGN=LEFT>True if this node should be considered temporary, i.e. should not be
+           found by many functions that look for node in the local node table. (Eventually, temporary
+           nodes should be stored in a separate, weak hash table.)</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="actor-mixin"><B><code><font size=+1>actor-mixin </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>actor</pre></TD><TD ALIGN=LEFT>Actor for this node</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="augmented-data"><B><code><font size=+1>augmented-data </font>(<a href="#monad">monad</a> <a href="#metadata-mixin">metadata-mixin</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Monad for data augmented with metadata.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>metadata</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>data</pre></TD><TD ALIGN=LEFT></TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="exception"><B><code><font size=+1>exception </font>(<a href="#monad">monad</a> <a href="#metadata-mixin">metadata-mixin</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Monad for some kind of exception, such as an error.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>metadata</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>name</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>exception-condition</pre></TD><TD ALIGN=LEFT>error condition if any</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="final-reply"><B><code><font size=+1>final-reply </font>(<a href="#reply">reply</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Final replies engender a forwarded final reply from node X iff all other replies node X
+    is expecting have also been received and are final replies. Furthermore, all reply-expectation structures
+    must be cleaned up in this event.
+    Otherwise a final reply to node X just engenders another interim reply upstream from node X.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>solicitation-uid</pre></TD><TD ALIGN=LEFT>UID of solicitation message that elicited this reply.</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="gossip-actor"><B><code><font size=+1>gossip-actor </font>(actors:actor)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>properties</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>priority</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>mbox</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>recv-info</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>busy</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>user-fn</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>node</pre></TD><TD ALIGN=LEFT>The gossip-node on behalf of which this actor works</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="gossip-message-mixin"><B><code><font size=+1>gossip-message-mixin </font>(<a href="#uid-slot">uid-slot</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="interim-reply"><B><code><font size=+1>interim-reply </font>(<a href="#reply">reply</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Interim replies engender a forwarded interim reply immediately to coalesce
+    all available data. A later interim reply (or a final reply) from node X for solicitation Y will override
+    an earlier interim reply. 'Later' here means the reply itself has a UID that's larger than the 'older'
+    one.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>solicitation-uid</pre></TD><TD ALIGN=LEFT>UID of solicitation message that elicited this reply.</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="metadata-mixin"><B><code><font size=+1>metadata-mixin </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>metadata</pre></TD><TD ALIGN=LEFT></TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="monad"><B><code><font size=+1>monad </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr><TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="no-reply-destination"><B><code><font size=+1>no-reply-destination </font>(error)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Condition]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>No destination for reply</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>reply</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>soluid</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>data</pre></TD><TD ALIGN=LEFT></TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="no-targets"><B><code><font size=+1>no-targets </font>(error)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Condition]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Error condition indicating no targets are available at a host with an anonymous destination.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>current-host</pre></TD><TD ALIGN=LEFT></TD>
+</TR>
+<TR>
+<TD><pre>message</pre></TD><TD ALIGN=LEFT>Solicitation attempting to be delivered</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="reply"><B><code><font size=+1>reply </font>(<a href="#gossip-message-mixin">gossip-message-mixin</a> <a href="#solicitation-uid-slot">solicitation-uid-slot</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Reply message. Used to reply to solicitations that need an :UPSTREAM or direct reply.
+     This class is not used for :GOSSIP or :NEIGHBORCAST replies; those replies are just new solicitations.
+     Why? Because only :UPSTREAM replies require the coalescence (i.e. reduce) mechanism and
+     for those, an expectation needs to be set up in the sending node that a reply will be coming back,
+     and a teardown mechanism happens when all expected replies have come back or a timeout occurs.
+     No coalescence, expectation, or teardown needs to happen for :GOSSIP or :NEIGHBORCAST replies.
+
+     Direct replies do establish expectations, so they use the reply class. Direct replies also use coalescence
+     but only at the ultimate receiver node since there are no other nodes where coalescence could occur.
+
+     It is common and expected to receive multiple :UPSTREAM or direct replies matching a given solicitation-uid.
+     :UPSTREAM replies are 'inverse broadcasts' in that they have many sources that funnel
+     back to one ultimate receiver -- the originator of the solicitation.
+     Direct replies can be similar except the message is sent directly from the ultimate recipient back
+     to the ultimate sender without being forwarded through the network.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>solicitation-uid</pre></TD><TD ALIGN=LEFT>UID of solicitation message that elicited this reply.</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="solicitation"><B><code><font size=+1>solicitation </font>(<a href="#gossip-message-mixin">gossip-message-mixin</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>An initial message sent to a gossip network or gossip node. Some solicitations require replies;
+    some don't.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR>
+<TR>
+<TD><pre>forward-to</pre></TD><TD ALIGN=LEFT>Normally true, which means this solicitation should be forwarded to neighbors
+             of the one that originally received it. If nil, it means never forward. In that case, if a reply is expected,
+             just reply immediately.
+             It can be an integer n, which means to forward to up to n random neighbors. (This is traditional
+             gossip protocol.)
+             It can also simply be T, which means to forward to all neighbors. (This is neighborcast protocol.)</TD>
+</TR>
+<TR>
+<TD><pre>reply-to</pre></TD><TD ALIGN=LEFT>Nil for no reply expected. :UPSTREAM or :GOSSIP or :NEIGHBORCAST indicate
+             replies should happen by one of those mechanisms, or a UID to request a direct reply to
+             a specific node.</TD>
+</TR>
+<TR>
+<TD><pre>graphid</pre></TD><TD ALIGN=LEFT>Which graph should this message propagate through? Since nodes can be part of multiple
+             graphs, which identifies which set of neighbors to use when forwarding the message. +default-graphid+ will be the default ground
+             graph which can be considered a 'physical' graph, while the rest are 'logical' but this is just a convention.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="solicitation-uid-slot"><B><code><font size=+1>solicitation-uid-slot </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>solicitation-uid</pre></TD><TD ALIGN=LEFT>UID of solicitation message that elicited this reply.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="system-async"><B><code><font size=+1>system-async </font>(<a href="#gossip-message-mixin">gossip-message-mixin</a> <a href="#solicitation-uid-slot">solicitation-uid-slot</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Used only for special timeout and socket-wakeup messages. In this case, solicitation-uid field
+    is used to indicate which solicitation should be timed out at the receiver of this message.</div></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>solicitation-uid</pre></TD><TD ALIGN=LEFT>UID of solicitation message that elicited this reply.</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>timestamp</pre></TD><TD ALIGN=LEFT>Timestamp of message origination</TD>
+</TR>
+<TR>
+<TD><pre>hopcount</pre></TD><TD ALIGN=LEFT>Number of hops this message has traversed.</TD>
+</TR>
+<TR>
+<TD><pre>kind</pre></TD><TD ALIGN=LEFT>The verb of the message, indicating what action to take.</TD>
+</TR>
+<TR>
+<TD><pre>args</pre></TD><TD ALIGN=LEFT>Payload of the message. Arguments to kind.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="tcp-gossip-node"><B><code><font size=+1>tcp-gossip-node </font>(<a href="#proxy-gossip-node">proxy-gossip-node</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>actor</pre></TD><TD ALIGN=LEFT>Actor for this node</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>logfn</pre></TD><TD ALIGN=LEFT>If non-nil, assumed to be a function called with every
+              message seen to log it.</TD>
+</TR>
+<TR>
+<TD><pre>temporary-p</pre></TD><TD ALIGN=LEFT>True if this node should be considered temporary, i.e. should not be
+           found by many functions that look for node in the local node table. (Eventually, temporary
+           nodes should be stored in a separate, weak hash table.)</TD>
+</TR>
+<TR>
+<TD><pre>real-address</pre></TD><TD ALIGN=LEFT>Real IP or DNS address of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-port</pre></TD><TD ALIGN=LEFT>Real port of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-uid</pre></TD><TD ALIGN=LEFT>UID of the (real) gossip node on the other end.
+               This proxy node will also have its own UID just for local lookup purposes,
+               but the real-uid is used to route it to the proper node on the remote
+               machine.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="udp-gossip-node"><B><code><font size=+1>udp-gossip-node </font>(<a href="#proxy-gossip-node">proxy-gossip-node</a>)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>actor</pre></TD><TD ALIGN=LEFT>Actor for this node</TD>
+</TR>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR>
+<TR>
+<TD><pre>logfn</pre></TD><TD ALIGN=LEFT>If non-nil, assumed to be a function called with every
+              message seen to log it.</TD>
+</TR>
+<TR>
+<TD><pre>temporary-p</pre></TD><TD ALIGN=LEFT>True if this node should be considered temporary, i.e. should not be
+           found by many functions that look for node in the local node table. (Eventually, temporary
+           nodes should be stored in a separate, weak hash table.)</TD>
+</TR>
+<TR>
+<TD><pre>real-address</pre></TD><TD ALIGN=LEFT>Real IP or DNS address of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-port</pre></TD><TD ALIGN=LEFT>Real port of remote node</TD>
+</TR>
+<TR>
+<TD><pre>real-uid</pre></TD><TD ALIGN=LEFT>UID of the (real) gossip node on the other end.
+               This proxy node will also have its own UID just for local lookup purposes,
+               but the real-uid is used to route it to the proper node on the remote
+               machine.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT ID="uid-slot"><B><code><font size=+1>uid-slot </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Class]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD><i>Instance-allocated Slots:</i></TD></TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH=95%>
+<TR>
+<TD><pre>uid</pre></TD><TD ALIGN=LEFT>Unique ID. These are assumed to be BEV objects.</TD>
+</TR></TABLE></TD></TR>
+<TR><TD><i>Class-allocated Slots:</i></TD></TR><tr><td><i>[None]</i></td></tr>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>%archive-log </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Archive existing *log* and start a new one.
+   This function is not thread-safe; should only be called from *logging-actor*.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>%make-node </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Makes a new [real, non-proxy] gossip node. Doesn't memoize it.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>%save-log </font>(&amp;key (text-only nil) (copy-first t))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Saves current *log* to two files -- one as objects and one as just strings.
+   (The first facilitates forensic debugging; the second is just for human administrator consumption.)
+   Moderately thread-safe if copy-first is true.
+   Not thread-safe at all otherwise.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>actor-keypair-fn </font>(cmd &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Test-and-set function that the *hmac-keypair-actor* runs.
+  It's critical that only one actor run pbc:make-key-pair at a time</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>actor-logger-fn </font>(cmd &amp;rest logmsg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Function that the *logging-actor* runs</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>actor-send </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Error-safe version of ac:send. Returns nil if successful; otherwise returns error object</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>add-random-connections </font>(nodelist n graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Adds n random edges between pairs in nodelist, where no connection currently exists.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>all-processes </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>augment </font>(datum &amp;optional (metadata (make-store 'alist)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>This is unit for the augmented-data monad</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>aws-p </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if we're running on an AWS EC2 instance.
+   Always runs quickly.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>cancel-replier </font>(thisnode reply-kind soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Actions to take when a replier should be canceled.
+  If no more repliers, reply upstream with final reply.
+  If more repliers, reply upstream either immediately or after a yield period with an interim-reply.
+  Returns true if a [now-cancelled] reply had been expected from soluid/srcuid.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>coalesce&amp;reply </font>(reply-to thisnode reply-kind soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Generic cleanup function needed for any message after all final replies have come in or
+  timeout has happened. Only for upstream [reduce-style] replies; don't use otherwise.
+  Cleans up reply tables and reply upstream with final reply containing coalesced data.
+  Assumes any timers have already been cleaned up.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>coalescer </font>(kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Reduction function for a particular message kind.
+  Must accept two augmented-data monads and produce a third.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>configure-local-machine </font>(keypairs local-machine)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Clear log, make local node(s) and start server</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>convert-dotfile-to-svg </font>(dotpath &amp;optional svgpath)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>current-node </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>debug-level </font>(&amp;optional (level nil level-supplied-p))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>default-logging-function </font>(logcmd &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Default logger for nodes. Filters using the *log-filter* mechanism.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>do-process-authenticated-packet </font>(deserialize-fn body-fn)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Handle decoding and authentication. If fails in either case just do nothing.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>emotiq-log-paths </font>(logvector)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>encode-uid </font>(machine-id process-id numeric-id)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ensure-list </font>(thing)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ensure-proxies </font>(adlist)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Ensures a proxy exists for each UID in each augmented-datum in adlist</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ensure-proxy-node </font>(mode real-address real-port real-uid &amp;optional (temporary-p nil))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Real-address, real-port, and real-uid refer to the node on an OTHER machine that this node points to.
+  Returns newly-created or old proxy-gossip-node, if any.
+  This is very conservative: It will never replace an existing real node of a given UID with a proxy node,
+  and it will never replace an existing proxy node of a given UID with a new one.
+  Newly-created proxy (if any) will be added to *nodes* database for this process.
+  If successful, proxy (new or existing) will be returned.
+  If proxy could not be found nor made for some reason, returns NIL.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>eripa-via-network-lookup </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns ERIPA for current process via http lookup at external site</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>establish-gossip-broadcast-group </font>(list-of-nodeids &amp;key graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Creates a connected graph (but usually not fully-connected) from list-of-nodeIDs.
+  Returns given graphID or it makes a new one and returns that.
+  If given graphID exists on any of these nodes, all connections on that graphID will be destroyed first.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>establish-star-broadcast-group </font>(list-of-nodeids &amp;key graphid center-nodeid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Creates a star topology with center-nodeID in center.
+  If no center-nodeID is given, a pseudo-node is created for that purpose.
+  Returns given graphID or it makes a new one and returns that.
+  If given graphID exists on these nodes, all connections on that graphID will be destroyed first.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>except </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Unit for the exception monad</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>externally-routable-ip-address </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns ERIPA for current process</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>find-process </font>(name)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a process with given name, if any.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>find-sfdp </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>forward </font>(msg srcuid destuids)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Sends msg from srcuid to multiple destuids. Returns nil if successful; error otherwise.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>generate-new-monotonic-id </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-kvs </font>(key)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Shows value of key for all local nodes. Just for debugging. :gossip-lookup-key is the proper way to do this.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-equalp </font>(d1 d2)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Like equalp but also tests for ip addresses and DNS names</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossipcast </font>(message &amp;key (graphid +default-graphid+) startnodeid (howmany 2) (kind 'k-multicast))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Sends message via traditional gossip.
+  Howmany determines whether traditional gossip or neighborcast is used.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>graceful-shutdown </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Gracefully shutdown the gossip server</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>handoff-to-application-handlers </font>(node msg highlevel-message-extractor)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>hello </font>(pkey ipaddr ipport &amp;key (style 'neighborcast) (graphid +default-graphid+) startnodeid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Announce the presence of pkey (node UID) at ipaddr and ipport to a graph. Nodes traversed will
+   add the pkey/ipaddr pair to their knowledge of the :uber graph.
+   graphID here is merely the graph traversed by this message; this does not connect nodes to any given
+   graph except for the :uber graph.
+   This is the 'push' equivalent of the 'pull' function #'ping-other-machines.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>hmac-keypair </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>host-in-nodes </font>(hostpair &amp;optional (nodes (remote-real-nodes)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of members of *hosts* that are not represented in (remote-real-nodes).</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>host-to-hbo </font>(host)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>host-to-vector-quad </font>(host)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>http-fetch </font>(url outstream &amp;key (follow-redirects t) (maximum-redirects *maximum-redirects*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>default scheme-function for http protocol.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>inspect-temp-proxies </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Only used for debugging</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>later-reply? </font>(new old)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if old is nil or new has a later timestamp</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>linear-path </font>(nodelist &amp;optional (graphid +default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Create a linear path through the nodes</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>local-nodes-matching </font>(pred)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of local nodes for which pred returns true. If pred=T, return all local nodes.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>local-real-nodes </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of nodes that are real (non-proxy), permanent and resident on this machine.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>local-real-uids </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of UIDs representing real (non-proxy) nodes resident on this machine.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>locally-dispatch-msg </font>(kindsym node msg srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Final dispatcher for messages local to this machine. No validation is done here.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>log-event </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>General mechanism for logging events. Sends timestamp and args to *logging-actor*.
+  No filtering is done here.
+  Also returns effective log message.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>log-event-for-pr </font>(cmd &amp;rest items)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Syntactic sugar to play nicely with ac:pr. Note this is NOT an actor function, so don't call actor-only functions from it.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>log-exclude </font>(&amp;rest strings)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Prevent log messages whose logcmd contains any of the given strings. Case-insensitive.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>log-histogram </font>(&amp;optional (log *log*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a histogram (as an alist) of given log by the keyword after the timestamp</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>log-include </font>(&amp;rest strings)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Allow log messages whose logcmd contains any of the given strings. Case-insensitive.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>long-uid </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-final-reply </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-interim-reply </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-nodes </font>(numnodes)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-proxy-node </font>(mode &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Makes a new proxy node of given mode: :UDP or :TCP</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-random-generator </font>(list)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a thunk that returns another random member of list
+  every time it's called. Never generates same member twice
+  (unless that member appears more than once in list in the first place).
+  Generates nil when no members are left.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-solicitation </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-stream-writer </font>(stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Create a callback for writing data to STREAM.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-system-async </font>(&amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-temp-dotfile </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-uid-mapper </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a table that maps UIDs to objects</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>massage-graphviz-svg-file </font>(infile outfile)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Hackliy massages a graphviz svg output file into an html file that will automatically
+  resize to match the size of your browser window.
+  Would be nice if there were options to graphviz for this, but alas, no.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>metadata-match? </font>(md1 md2)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if the two metadata match, or nil if not.
+   Metadata match if they are both nil, or if they both have identical keys and values,
+   but possibly in different orders.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>missing-hosts </font>(&amp;optional (hosts *hosts*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of members of *hosts* that are not [yet] represented in (remote-real-nodes).
+  Such hosts are concerning; they indicate we have not yet heard from one or more hosts
+  that were listed in our hosts.conf file.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>missing? </font>(alive-list)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of node UIDs that are missing from a list returned by list-alive</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>multiple-list-uids </font>(address-port-list)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Get a list of all UIDs of nodes at given remote address and port in
+  list like ((address port) (address port) ...).
+  This uses gossip and works in parallel.
+  If no error, returned list will look like
+  (address port uid1 uid2 ...)
+  If error, returned list will look like
+  (address port :ERRORMSG arg1 arg2 ...)</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>multiple-tally </font>(alist1 alist2)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Utility function. Given two alists like ((key1 . n1) (key2 . n2) ...)
+  call kvs:tally for all pairs in alist.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>munge-augmented-data </font>(ad ad-list dcfun)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>If ad has metadata that matches that of one of the ads in ad-list, coalesce it using dcfun into that list and return the list.
+  If it doesn't match any in the list, return a new list with ad appended to ad-list</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>new-log </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a new log space</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>new-nodes </font>(&amp;optional (hosts *hosts*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of members of (remote-real-nodes) whose hosts are not represented in *hosts*.
+   Such nodes are not errors; they merely represent nodes that said hello to us whose hosts were
+   not in our hosts.conf file.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>new-tiny-uid </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>new-uid </font>(&amp;optional (style *default-uid-style*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Generate a new UID of the given style</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>node-in-hosts </font>(node &amp;optional (hosts *hosts*))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if node is a proxy node that is represented in hosts,
+  where each host is a pair of (ipaddr port).</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>other-tcp-port </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Deduce proper port for other end of connection based on whether this process
+   has already established one. Only used for testing two processes communicating on one machine.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>other-udp-port </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>process-eripa-value </font>(ev)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>process-kill </font>(process)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>process-name </font>(process)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>proxy-node-p </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if node is a non-temporary proxy node</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>proxy-to-host </font>(&amp;rest hostpair)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a proxy (could be temporary, and it fact probably will be) with real-uid=0 pointing to given ipaddr and port</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>random-connection </font>(nodelist)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>random-name </font>(&amp;optional (prefix ELEM))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>random-new-connection </font>(nodelist graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>real-node-p </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>record-interim-reply </font>(new-reply node soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Record new-reply for given soluid and srcuid on given node.
+  If new-reply is later or first one, replace old and return true.
+  Otherwise return false.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>remote-real-nodes </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of permanent proxies that point at remote nodes</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>remote-real-uids </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a list of UIDs representing real nodes known to be resident on other machines.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>remove-keywords </font>(arg-list keywords)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>remove-nth </font>(n list)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns nth item and returns item and new list.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>request-hello </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>restore-graph-from-file </font>(pathname)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Restores a graph from a file saved by save-graph-to-file.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>run-coalescer </font>(coalescer local-data new-data)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-chunk-response </font>(stream cbuf)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>For a chunked response, read all chunks and write them to STREAM.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-graph </font>(stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-graph-to-file </font>(pathname)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Save current graph to file. Restore by calling restore-graph-from-file.
+   Makes experimentation easier.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-response-to-stream </font>(stream header cbuf)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>schedule-gossip-timeout </font>(delta actor soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Call this to schedule a timeout message to be sent to an actor after delta seconds from now.
+   Keep the returned value in case you need to call ac::unschedule-timer before it officially times out.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-active-ignore </font>(to from kind soluid failure-reason)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Actively send a reply message to srcuid telling it we're ignoring it.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-delayed-interim-reply </font>(thisnode reply-kind soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Called by a node actor to tell itself (or another actor, but we never do that now)
+  to maybe send an interim reply after it processes any possible interim messages, which
+  could themselves obviate the need for an interim reply.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-final-reply </font>(srcnode destination soluid kind data)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Return nil if successful; an error object otherwise.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-gossip-timeout-message </font>(actor soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Send a gossip-timeout message to an actor. (We're not using the actors' native timeout mechanisms at this time.)</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-interim-reply </font>(thisnode reply-kind soluid where-to-send-reply)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Send an interim reply, right now.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>serialize-log </font>(logvector path)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Serialize a log vector to a file as objects. Not thread safe. Don't run
+   on log vectors that are in use unless the *logging-actor* does it.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>short-uid </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>shutdown-msg-len </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>sign-message </font>(msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Sign and return an authenticated message packet. Packet includes
+  original message.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>start-gossip-transport </font>(&amp;optional (address nil) (port nil))</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Start the Gossip Transport network endpoint (if not already started.)
+  ADDRESS and/or PORT can be supplied to bind the endpoint to a
+  specific address, otherwise an available address will be assigned
+  automatically.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>stream-eofp </font>(stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if stream is at EOF</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>stringify-log </font>(logvector path)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Saves logvector to a file. Moderately thread-safe if copy-first is true.
+  Not thread-safe at all otherwise.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>temp-folder </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>transport-message-received </font>(message)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Callback for transport layer on incoming message from other node.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>transport-peer-down </font>(peer-address peer-port reason)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Callback for transport layer event.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>transport-peer-up </font>(peer-address peer-port)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Callback for transport layer event.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>uber-set </font>()</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns a complete list of UIDs of real nodes known on both this machine and other machines.
+  Note that some members of the list may point to [permanent] proxies on this machine.</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>uid= </font>(thing1 thing2)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>uid? </font>(thing)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>use-some-neighbors </font>(neighbors howmany)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Pick a few random neighbors based on value of howmany</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>write-as-string </font>(msg stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Writes a list of objects (msg) as a string to stream</div></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>write-dotfile </font>(dotfile nodelist graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>write-dotfile-stream </font>(stream nodelist graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>write-inner-commands </font>(stream nodelist graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>%visualize-nodes </font>(nodelist &amp;optional graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>%visualize-nodes ((nodelist list) &amp;optional (graphid gossip::+default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Calls visualize-nodes-svg, then converts that file into an html file that automatically
+  resizes the svg image as you resize your browser window. Opens html file in browser.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>accept-msg? </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>accept-msg? ((msg <a href="#system-async">system-async</a>) (thisnode <a href="#abstract-gossip-node">abstract-gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>accept-msg? ((msg <a href="#reply">reply</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>accept-msg? ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns kindsym if this message should be accepted by this node, nil and a failure-reason otherwise.
+  Kindsym is the name of the gossip method that should be called to handle this message.
+  Doesn't change anything in message or node.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>actor </font>(actor-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>actor ((arg-0 <a href="#actor-mixin">actor-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ad-lift </font>(fn)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>ad-lift (fn)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Lift for augmented-data. Returns a function made from fn that returns an augmented-data monad.
+   Fn must be a function of 2 arguments (data and metadata) and produce 2 values (new-data and new-metadata)</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>add-metadata </font>(thing key datum)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>add-metadata ((thing <a href="#metadata-mixin">metadata-mixin</a>) key datum)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Adds a metadata pair to metadata-containing thing</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>alistify-hashtable </font>(table)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>alistify-hashtable ((table hash-table))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>announce </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>announce ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Announce a message to the collective. First arg of Msg is the announcement,
+   which can be any Lisp object. Recipient nodes are not expected to reply.
+   This is probably only useful for debugging gossip protocols, since the only
+   record of the announcement will be in the log.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>args </font>(gossip-message-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>args ((arg-0 <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>bind </font>(fn monad)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>bind (fn (monad <a href="#monad">monad</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>General bind. Reverse arguments from typical bind because this way works better for composition in Lisp.
+   Fn should produce another monad, but this is not strictly enforced.
+   You can use ad-lift to create such a function.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>clear-caches </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>clear-caches ((node <a href="#proxy-gossip-node">proxy-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>clear-caches ((node <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Caches should be cleared in the normal course of events, but this can be used to make sure.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>coalesce </font>(node kind soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>coalesce ((node <a href="#gossip-node">gossip-node</a>) kind soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Grab all the data that interim repliers have sent me so far, combine it with my
+  local reply-cache in a way that's specific to kind, and return result.
+  This purely functional and does not change reply-cache.
+  This is essentially a reduce operation but of course we can't use that name.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>connect </font>(node1 node2 &amp;optional graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>connect ((node1 <a href="#gossip-node">gossip-node</a>) (node2 <a href="#gossip-node">gossip-node</a>) &amp;optional (graphid gossip::+default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Establish an edge between two nodes. Because every node must know its nearest neighbors,
+   we store the edge information twice: Once in each endpoint node.
+   This method is only for connecting local, real nodes.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>connected? </font>(node1 node2 &amp;optional graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>connected? ((node1 <a href="#gossip-node">gossip-node</a>) (node2 <a href="#gossip-node">gossip-node</a>) &amp;optional (graphid gossip::+default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>copy-message </font>(msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Copies a message object verbatim. Mainly for simulation mode
+          where messages are shared, in which case in order to increase hopcount,
+          the message needs to be copied.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>copy-message :around ((msg <a href="#system-async">system-async</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>copy-message :around ((msg <a href="#reply">reply</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>copy-message :around ((msg <a href="#solicitation">solicitation</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>copy-message ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>count-alive </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>count-alive ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Return total count of nodes that received the message.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>current-host </font>(no-targets)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>current-host ((arg-0 <a href="#no-targets">no-targets</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>data </font>(no-reply-destination)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data ((arg-0 <a href="#no-reply-destination">no-reply-destination</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data ((arg-0 <a href="#augmented-data">augmented-data</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>data-coalescer </font>(kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Coalescer (reducer) for two arguments for a given kind of reply.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data-coalescer ((kind (:eql :find-min)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data-coalescer ((kind (:eql :find-max)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data-coalescer ((kind (:eql :gossip-lookup-key)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Proper coalescer for :GOSSIP-LOOKUP-KEY responses.</div></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data-coalescer ((kind (:eql :list-alive)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Proper coalescer for :list-alive responses. Might
+   want to add a call to remove-duplicates here if we start
+   using a gossip protocol not guaranteed to ignore redundancies).</div></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>data-coalescer ((kind (:eql :count-alive)))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Proper coalescer for :count-alive responses.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>deliver-gossip-msg </font>(gossip-msg node srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>deliver-gossip-msg ((gossip-msg <a href="#system-async">system-async</a>) (node <a href="#abstract-gossip-node">abstract-gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>deliver-gossip-msg (gossip-msg (node <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>deliver-gossip-msg (gossip-msg (node <a href="#proxy-gossip-node">proxy-gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>This node is a standin for a remote node. Transmit message across network.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>dissolve-neighborhood </font>(node graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>dissolve-neighborhood ((node <a href="#gossip-node">gossip-node</a>) graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Removes connections associated with given graphID. graphID _must_ be specified here.
+   Returns true if graphID in fact existed on this node; nil otherwise.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>dump-node </font>(node stream edgetable graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>dump-node ((node <a href="#gossip-node">gossip-node</a>) stream edgetable graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>dump-node ((node <a href="#proxy-gossip-node">proxy-gossip-node</a>) stream edgetable graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Dump proxy node showing UID, real address, and real port</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>ensure-proxy-from-ad </font>(monad)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>ensure-proxy-from-ad ((monad <a href="#augmented-data">augmented-data</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Given an augmented-data, make a proxy from it if it contains enough metadata to do so.
+  [Calling bind here is cheating because we're not returning another monad.
+  We're side-effecting, not composing. But it's easy.]</div></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>ensure-proxy-from-ad (monad)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>exception-condition </font>(exception)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>exception-condition ((arg-0 <a href="#exception">exception</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>find-max </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>find-max ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Retrieve maximum value of a given key on all the nodes. Non-numeric values are ignored.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>find-min </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>find-min ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Retrieve minimum value of a given key on all nodes</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>forward-to </font>(solicitation)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>forward-to ((arg-0 <a href="#solicitation">solicitation</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>generic-srr-handler </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>generic-srr-handler ((msg <a href="#final-reply">final-reply</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>generic-srr-handler ((msg <a href="#interim-reply">interim-reply</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>generic-srr-handler ((msg <a href="#solicitation">solicitation</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Generic handler for solicitations requiring replies (SRRs)</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-downstream </font>(node srcuid howmany &amp;optional graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>get-downstream ((node <a href="#gossip-node">gossip-node</a>) srcuid howmany &amp;optional (graphid gossip::+default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-metadata </font>(thing key)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>get-metadata ((thing <a href="#metadata-mixin">metadata-mixin</a>) key)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Gets metadata value associated with key, if any</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-previous-reply </font>(node soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>get-previous-reply ((node <a href="#gossip-node">gossip-node</a>) soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Retrieve interim reply indexed by soluid and srcuid</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>get-upstream-source </font>(node soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>get-upstream-source ((node <a href="#gossip-node">gossip-node</a>) soluid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Retrieves the upstream source uid for a given soluid on this node</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-dispatcher </font>(node &amp;rest actor-msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-dispatcher (node &amp;rest actor-msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Extracts gossip-msg from actor-msg and calls deliver-gossip-msg on it</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-lookup-key </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-lookup-key ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Lookup value of given key. Returns an alist of ((value1 . count1) (value2 . count2) ...)
+   where valuex is a value found associated with the key and countx is the number of nodes with
+   that value.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-relate </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-relate ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Establishes a global non-unique key/value pair. If key currently has a value or set of values,
+   new value will be added to the set; it won't replace them.
+  Sets value on this node and then forwards 
+  solicitation to other nodes, if any.
+  No reply expected.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-relate-unique </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-relate-unique ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Establishes a global unique key/value pair. [Unique means there will be only one value for this key.]
+  Sets value on this node and then forwards 
+  solicitation to other nodes, if any. This is a destructive operation --
+  any node that currently has a value for the given key will have that value replaced.
+  No reply expected.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-remove-key </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-remove-key ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Remove a global key/value pair. Removes key/value pair on this node and then forwards 
+   solicitation to other nodes, if any. This is a destructive operation --
+   any node that currently has the given key will have that key/value removed.
+   There's no harm in calling this more than once with the same key; if key
+   wasn't present in the first place, this is a no-op.
+   No reply expected.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>gossip-tally </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>gossip-tally ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Increment the value of a given key by an increment amount.
+   If no value for that key exists currently, set it to 1.
+   No reply expected.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>graphid </font>(solicitation)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>graphid ((arg-0 <a href="#solicitation">solicitation</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>hopcount </font>(gossip-message-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>hopcount ((arg-0 <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>incoming-message-handler </font>(msg srcuid destuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>incoming-message-handler ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) srcuid destuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Locally dispatch messages received from network</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>initial-reply-value </font>(kind thisnode msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Initial the reply-value for the given kind of message. Must return an augmented-data object.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value ((kind (:eql :find-min)) (thisnode <a href="#gossip-node">gossip-node</a>) msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value ((kind (:eql :find-max)) (thisnode <a href="#gossip-node">gossip-node</a>) msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value ((kind (:eql :list-alive)) (thisnode <a href="#gossip-node">gossip-node</a>) msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value ((kind (:eql :count-alive)) (thisnode <a href="#gossip-node">gossip-node</a>) msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value ((kind (:eql :gossip-lookup-key)) (thisnode <a href="#gossip-node">gossip-node</a>) msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>initial-reply-value :around (kind thisnode msgargs)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Ensure an augmented-data object is getting returned.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>k-connect </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>k-connect ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>k-dissolve </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>k-dissolve ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Commands every node it passes through to dissolve connections associated with a given graphID.
+   Always uses full neighborcast, no matter what the message says.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>k-hello </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>k-hello ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Announce a UID, IP address, and port to the collective.
+  (This is different from the automatic ensure-proxy-node that happens with every incoming
+   connection because that implicitly proxifies only the immediate upstream sender.
+   This explicitly proxifies a particular node.)*
+  Every intermediate node will have the message both delivered to it and forwarded through it.
+  Recipient nodes are not expected to reply.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>k-multicast </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>k-multicast ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Announce a message to the collective. Application message is expected to be in args of the solicitation.
+  Every intermediate node will have the message
+  both delivered to it AND forwarded through it.
+  Recipient nodes are not expected to reply (at least not with builtin gossip-style replies).</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>k-singlecast </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>k-singlecast ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Send a message to one and only one node. Application message is expected to be in (cdr args) of the solicitation.
+  Destination node is expected to be in (car args) of the solicitation.
+  Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
+  Every intermediate node will have the message forwarded through it but message will not be 'delivered' to intermediate nodes.
+  Destination node is not expected to reply (at least not with builtin gossip-style replies).</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>kind </font>(gossip-message-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>kind ((arg-0 <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>list-alive </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>list-alive ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) (thisnode <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Like count-alive but this returns an actual list of node UIDs that received the message.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>local-kvs </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>local-kvs ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>locally-receive-msg </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>locally-receive-msg (msg (thisnode <a href="#proxy-gossip-node">proxy-gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>locally-receive-msg ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) (node <a href="#gossip-node">gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>The main dispatch function for gossip messages. Runs entirely within an actor.
+  First checks to see whether this message should be accepted by the node at all, and if so,
+  it calls the function named in the kind field of the message to handle it.</div></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>locally-receive-msg ((msg <a href="#system-async">system-async</a>) (node <a href="#abstract-gossip-node">abstract-gossip-node</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>logfn </font>(abstract-gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>logfn ((arg-0 <a href="#abstract-gossip-node">abstract-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>lowlevel-application-handler </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns something that actor-send can send to, which is associated with node.
+   This is used by gossip to forward an raw gossip-message-mixin once it reaches its destination node.
+   Function should accept 2 args: node and gossip-message-mixin.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>lowlevel-application-handler ((node <a href="#abstract-gossip-node">abstract-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Default method</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-gossip-actor </font>(node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>make-gossip-actor (node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>make-timeout-handler </font>(node msg kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>make-timeout-handler ((node <a href="#gossip-node">gossip-node</a>) (msg <a href="#solicitation">solicitation</a>) (kind keyword))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>maybe-augment-datum </font>(datum kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>maybe-augment-datum (datum kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>maybe-augment-datum ((datum <a href="#augmented-data">augmented-data</a>) kind)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>maybe-sir </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>maybe-sir ((msg <a href="#solicitation">solicitation</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Maybe-send-interim-reply. The sender of this message will be thisnode itself</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>memoize-message </font>(node msg srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>memoize-message ((node <a href="#gossip-node">gossip-node</a>) (msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Record the fact that this node has seen this particular message.
+  In cases of solicitation messages, we also care about the upstream sender, so
+  we just save that as the value in the key/value pair.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>message </font>(no-targets)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>message ((arg-0 <a href="#no-targets">no-targets</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>message-cache </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>message-cache ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>metadata </font>(metadata-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>metadata ((arg-0 <a href="#metadata-mixin">metadata-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>more-replies-expected? </font>(node soluid &amp;optional whichones)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>more-replies-expected? ((node <a href="#gossip-node">gossip-node</a>) soluid &amp;optional (whichones nil))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Utility function. Can be called by message handlers.
+  If whichones is true, returns not just true but an actual list of expected repliers [or nil if none].</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>name </font>(exception)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>name ((arg-0 <a href="#exception">exception</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>neighborcast? </font>(msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>neighborcast? ((msg <a href="#solicitation">solicitation</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>True if message is requesting neighborcast protocol</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>neighborhood </font>(node &amp;optional graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>neighborhood ((node <a href="#gossip-node">gossip-node</a>) &amp;optional (graphid gossip::+default-graphid+))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>If graphID = :UBER, return the uber-set rather than the neighbors table in the node.
+   The uber-set is mostly for bootstrapping a gossip network.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>neighbors </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>neighbors ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>node </font>(gossip-actor)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>node ((arg-0 <a href="#gossip-actor">gossip-actor</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>node-log </font>(node logcmd msg &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>node-log ((node <a href="#abstract-gossip-node">abstract-gossip-node</a>) logcmd msg &amp;rest args)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Log a message-based event that occurred to a node.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>node-matches-host? </font>(node host)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>node-matches-host? (node host)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>node-matches-host? ((node <a href="#proxy-gossip-node">proxy-gossip-node</a>) (hostpair cons))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Returns true if host of node matches hostpair.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>prepare-repliers </font>(thisnode soluid downstream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>prepare-repliers ((thisnode <a href="#gossip-node">gossip-node</a>) soluid downstream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Prepare reply tables for given node, solicitation uid, and set of downstream repliers.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>readable-value </font>(me)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>readable-value ((me list))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>readable-value ((me hash-table))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>readable-value ((me symbol))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>readable-value (me)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>real-address </font>(proxy-gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>real-address ((arg-0 <a href="#proxy-gossip-node">proxy-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>real-port </font>(proxy-gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>real-port ((arg-0 <a href="#proxy-gossip-node">proxy-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>real-uid </font>(proxy-gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>real-uid ((arg-0 <a href="#proxy-gossip-node">proxy-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>remove-previous-reply </font>(node soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>remove-previous-reply ((node <a href="#gossip-node">gossip-node</a>) soluid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Remove interim reply (if any) indexed by soluid and srcuid from repliers-expected table.
+  Return true if table is now empty; false if any other expected repliers remain.
+  Second value is true if given soluid and srcuid was indeed present in repliers-expected.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>repliers-expected </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>repliers-expected ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>reply </font>(no-reply-destination)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>reply ((arg-0 <a href="#no-reply-destination">no-reply-destination</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>reply-cache </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>reply-cache ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>reply-to </font>(solicitation)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>reply-to ((arg-0 <a href="#solicitation">solicitation</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>save-node </font>(node stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>save-node ((node <a href="#gossip-node">gossip-node</a>) stream)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Write a form to stream that will reconstruct given node</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-msg </font>(msg destuid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Sends msg to destuid from srcuid. Srcuid can be nil, but generally should
+   contain the id of the sender, if known.
+   Returns nil if successful; an error object otherwise.</div></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>send-msg ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>) destuid srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>send-msg ((msg <a href="#solicitation">solicitation</a>) (destuid (:eql 0)) srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Sending a message to destuid=0 broadcasts it to all local (non-proxy) nodes in *nodes* database.
+   This is intended to be used by incoming-message-handler methods for bootstrapping messages
+   before #'neighbors connectivity has been established.
+   See Note D.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>send-self </font>(msg)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>send-self ((msg <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Send a gossip message to the current node, if any.
+  Should only be called from within a gossip-actor's code; otherwise nothing happens.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>set-previous-reply </font>(node soluid srcuid reply)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>set-previous-reply ((node <a href="#gossip-node">gossip-node</a>) soluid srcuid reply)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Remember interim reply indexed by soluid and srcuid</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>set-uid </font>(self value)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>set-uid ((self <a href="#uid-slot">uid-slot</a>) value)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>solicitation-uid </font>(solicitation-uid-slot)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>solicitation-uid ((arg-0 <a href="#solicitation-uid-slot">solicitation-uid-slot</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>soluid </font>(no-reply-destination)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>soluid ((arg-0 <a href="#no-reply-destination">no-reply-destination</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>tally-nondestructive </font>(store key amount &amp;key)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>tally-nondestructive ((store list) key amount &amp;key (test #'equal))</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Utility function. Purely functional version of kvs:tally. Only works on alists.
+  Increments the key . value pair in alist indicated by key, by the indicated amount.
+  If such a pair doesn't exist, create it.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>temporary-p </font>(abstract-gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>temporary-p ((arg-0 <a href="#abstract-gossip-node">abstract-gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>timeout </font>(msg thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>timeout ((msg <a href="#system-async">system-async</a>) thisnode srcuid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Timeouts are a special kind of message in the gossip protocol,
+  and they're typically sent by a special timer thread.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>timeout-handlers </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>timeout-handlers ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>timers </font>(gossip-node)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>timers ((arg-0 <a href="#gossip-node">gossip-node</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>timestamp </font>(gossip-message-mixin)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>timestamp ((arg-0 <a href="#gossip-message-mixin">gossip-message-mixin</a>))</code></B></TD>
+<TD ALIGN=RIGHT><I>[accessor-method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
+
+<TABLE CELLPADDING=3 WIDTH="100%">
+<TR>
+<TD ALIGN=LEFT><B><code><font size=+1>visualize-nodes-svg </font>(nodelist graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[Generic function]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><i>[No documentation found]</i></TD>
+</TR><TR><TD COLSPAN=2 ALIGN=RIGHT>
+<TABLE CELLPADDING=3 WIDTH="95%">
+<TR>
+<TD ALIGN=LEFT><B><CODE>visualize-nodes-svg ((nodelist list) graphid)</code></B></TD>
+<TD ALIGN=RIGHT><I>[method]</I></TD></TR>
+<TR>
+<TD COLSPAN=2><div style='white-space: normal;'>Makes a graphviz .dot file from nodelist, then converts that to an .svg file, and returns that pathname.
+  Opens svg file in browser.</div></TD>
+</TR>
+</TABLE>
+</TD></TR>
+</TABLE>
+<BR/>
