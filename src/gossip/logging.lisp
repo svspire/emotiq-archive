@@ -6,17 +6,25 @@
 (defparameter *log-filter* t "t to log all messages; nil to log none. If fn, it should be a predicate that determines whether to log given message.")
 (defparameter *log-object-extension* ".log" "File extension for object-based logs")
 (defparameter *log-string-extension* ".txt" "File extension for string-based logs")
-(defvar *debug-level* 1 "True to log debugging information while handling gossip requests. Larger values log more messages.")
+(defvar *debug-level* 1 "True to log debugging information while handling gossip requests. Larger values log more messages. T to log everything.
+      NOTE NOTE NOTE: You cannot bind *debug-level* and expect anything useful to happen. You MUST set it globally!")
+(defparameter *friendly-logs* t "True to make string logs easier to read by using relative microsecond times and node-names when available. ~
+If you seet this to true you might also want to set *default-uid-style* to :tiny.")
 
-(defun debug-level (&optional (level nil level-supplied-p))
-  (cond (level-supplied-p
-         (when *debug-level*
-           (if (numberp *debug-level*)
-               (if (numberp level)
-                   (>= *debug-level* level)
-                   nil)
-               t)))
-        (t *debug-level*)))
+(defun show-debug-p (&optional (level nil level-supplied-p))
+  ; Writing this is a very explicit and unclever style to make it extremely clear what's going on
+  (cond ((eql *debug-level* t)
+         t)
+        ((null *debug-level*)
+         nil)
+        ((numberp *debug-level*)
+         (if (and level-supplied-p
+                  (numberp level))
+             (>= *debug-level* level)
+             level ; The case where the _caller_ of #'edbug has presumably already checked the level
+             ))
+        (t ; *debug-level* is some non-numeric true value
+         *debug-level*)))
 
 (defun (setf debug-level) (val)
   (setf *debug-level* val))
@@ -32,12 +40,17 @@
            msg
            args)))
 
+(defun %edebug (tag &rest args)
+  "Sometimes we need to call this directly e.g. when the caller must check show-debug-p manually
+   because it's costly to construct the args"
+  (typecase tag 
+    (abstract-gossip-node (apply 'node-log tag args))
+    (t (apply 'log-event tag args))))
+
 (defun edebug (level tag &rest args)
-  "Syntactic sugar for wrapping debug-level around a log-event call"
-  (when (debug-level level)
-     (typecase tag 
-       (abstract-gossip-node (apply 'node-log tag args))
-       (t (apply 'log-event tag args)))))
+  "Syntactic sugar for wrapping show-debug-p around a log-event call"
+  (when (show-debug-p level)
+    (apply '%edebug tag args)))
 
 (defun log-exclude (&rest strings)
   "Prevent log messages whose logcmd contains any of the given strings. Case-insensitive."
@@ -104,6 +117,7 @@
       (apply 'log-event logcmd args))))
 
 (defun emotiq-log-paths (logvector)
+  ;;; NDY: Deal with logvector being of 0 length
   (let* ((name (format nil "~D-~D" (car (aref logvector 0)) (car (aref logvector (1- (length logvector))))))
          (namelog (concatenate 'string name *log-object-extension*))
          (nametxt (concatenate 'string name *log-string-extension*)))
@@ -119,12 +133,16 @@
     ;; must not use FORMAT to *standard-output* here, because this is being
     ;; run in a multiprocessing environment (Actors or no Actors)
     (loenc:serialize logvector stream)))
-    
-(defun write-as-string (msg stream)
+
+(defun write-log-entry-as-string (msg stream earliest-log-time)
   "Writes a list of objects (msg) as a string to stream"
   ;; Some of our streams have a lot of overhead on each write, so we pre-convert
   ;;   msg to a string. See Note F.
-  (write-string (format nil "~{~S~^ ~}~%" msg) stream))
+  (let ((timestamp (if (integerp earliest-log-time)
+                       (- (car msg) earliest-log-time)
+                       (car msg))))
+  (write-string (format nil "~S ~{~S~^ ~}~%" timestamp (cdr msg)) stream)))
+
   ;; FORMAT NIL here is maybe OK, this is being run in a multiprocesing environment, but,
   ;; even if FORMAT is swapped out, WRITE-STRING cannot run until it has all of its args
   ;; in place.  It depends on whether WRITE-STRING is "atomic" in a given implementation.
@@ -145,8 +163,11 @@
     ;(format *standard-output* "Serializing log to ~a" path)
     ;; must not use FORMAT to *standard-output* here, because this is being
     ;; run in a multiprocessing environment (Actors or no Actors)
-    (loop for msg across logvector do
-      (write-as-string msg stream))))
+    (let ((earliest-log-time (if *friendly-logs*
+                                 (car (aref logvector 0))
+                                 nil)))
+      (loop for msg across logvector do
+        (write-log-entry-as-string msg stream earliest-log-time)))))
 
 (defun deserialize-log (path)
   "Deserialize object-based log file at path"
@@ -176,6 +197,7 @@
 
 (defun save-text-log ()
   "Saves current *log* to a file. Thread-safe."
+  ; I would love for this function to return the pathname of the log back to me but I don't know how to make actors return values
    (actor-send *logging-actor* :save-text))
 
 (defun actor-logger-fn (cmd &rest logmsg)

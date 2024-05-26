@@ -45,7 +45,8 @@
 ;;;; DEPRECATE
 (defparameter *use-all-neighbors* 2 "True to broadcast to all neighbors; nil for none (no forwarding).
                                        Can be an integer to pick up to n neighbors.")
-;;;; DEPRECATE
+
+;;;; DEPRECATE. NO CODE THAT MATTERS IS USING THIS VARIABLE NOW. This is completely controlled by forward-to slot now.
 (defparameter *active-ignores* t "True to reply to sender when we're ignoring a message from that sender.")
 
 (defparameter *max-server-tries* 4 "How many times we can try finding an unused local server port before we give up. 1 to only try once.")
@@ -705,7 +706,7 @@ are in place between nodes.
     :node node
     :fn 
     (lambda (&rest msg)
-      (edebug 6 "Gossip Actor" (ac::current-actor) "received" msg)
+      (edebug 6 (ac::current-actor) "received" msg)
       (apply 'gossip-dispatcher node msg))))
 
 (defun memoize-node (node)
@@ -1127,7 +1128,8 @@ dropped on the floor.
          (destactor (if destnode ; if destuid doesn't represent a gossip node, assume it represents something we can actor-send to
                         (actor destnode)
                         destuid)))
-    (edebug 5 "send-msg" msg srcuid "to" destuid)
+    (when (show-debug-p 5)
+      (%edebug "send-msg" msg (lookup-node srcuid) "to" (lookup-node destuid)))
     (uiop:if-let (error (actor-send destactor
                                     :gossip ; actor-verb
                                     srcuid  ; first arg of actor-msg
@@ -1458,12 +1460,12 @@ dropped on the floor.
   "Default method"
   (or *ll-application-handler*
       (lambda (node msg)
-        (edebug 1 node :LL-APPLICATION-HANDLER msg))))
+        (edebug 7 node :LL-APPLICATION-HANDLER msg))))
 
 (defmethod application-handler ((node abstract-gossip-node))
   "Default method"
   (lambda (&rest args)
-    (apply 'edebug 1 node :APPLICATION-HANDLER args)))
+    (apply 'edebug 6 node :APPLICATION-HANDLER args)))
 
 (defun handoff-to-application-handlers (node msg highlevel-message-extractor)
   (let ((lowlevel-application-handler (lowlevel-application-handler node))
@@ -1958,7 +1960,9 @@ dropped on the floor.
                       (let ((timeout-handler (kvs:lookup-key (timeout-handlers thisnode) (vec-repr:bev-vec soluid))))
                         (if timeout-handler ; will be nil for messages that don't expect a reply
                             (funcall timeout-handler nil)
-                            (edebug 5 thisnode :NO-TIMEOUT-HANDLER! soluid)
+                            (unless (eql :k-multicast reply-kind) ;;; NDY: This is a kludge to decrease noise in the log for messages that don't expect a reply.
+                              ;;; I don't know that :k-multicast covers all cases.
+                              (edebug 5 thisnode :NO-TIMEOUT-HANDLER! soluid))
                             )))
                      (t ; more repliers are expected
                       ; functionally coalesce all known data and send it upstream as another interim reply
