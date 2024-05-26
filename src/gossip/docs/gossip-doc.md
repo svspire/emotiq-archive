@@ -483,6 +483,18 @@ more specialized needs for local message handling should specialize
 
  
 
+Destinations
+------------
+
+The concept of the "destination" of a message can be confusing. \#'send-msg has
+a second parameter of the nodeID where the message will be sent. But that's
+merely the next node in a chain. If the message is actually *intended* for a
+specific destination, that destination nodeID is included in the message object,
+as the first value in the list in the args slot. That's why you see` (car (args
+msg))` in `#'k-singlecast`.
+
+ 
+
 Timeouts
 --------
 
