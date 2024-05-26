@@ -467,6 +467,14 @@ message locally somehow before forwarding it. Allowed values:
 
  
 
+Replies
+-------
+
+[[I don't remember how replies work and I don't need them at present. Document
+them later.]]
+
+ 
+
 All the above kinds occur as both keywords in the 'kind slot of messages, and as
 functions or methods in their own right. **Those functions and methods decide
 the ultimate fate of the message.** In general, each 'kind' function can check
