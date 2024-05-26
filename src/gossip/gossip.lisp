@@ -320,7 +320,8 @@ are in place between nodes.
   "Returns ERIPA for current process"
   ; add mechanisms to get this from command-line args or environment variables which should take precedence
   ;   over network lookup
-  (eripa-via-network-lookup))
+  (handler-case (eripa-via-network-lookup) ; in case network is down
+    (error () nil)))
 
 (defun eripa ()
   "Return externally-routable ip address of this machine. This is the primary user function.
@@ -426,7 +427,7 @@ are in place between nodes.
    (kind :initarg :kind :initform nil :accessor kind
          :documentation "The verb of the message, indicating what action to take.")
    (args :initarg :args :initform nil :accessor args
-         :documentation "Payload of the message. Arguments to kind.")
+         :documentation "Payload of the message. Arguments to kind. Usually a list whose first element is the ultimate intended destination nodeID.")
    ))
 
 (defgeneric copy-message (msg)
@@ -953,20 +954,23 @@ dropped on the floor.
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
   (let* ((uid (as-uid node))
          (mbox (mpcompat:make-mailbox))
-         (actor (ac:make-actor (lambda (&rest msg) (apply 'actor-send mbox msg))))
-         (actor-name (gentemp "OUTPUTTER" :gossip)))
+         (new-actor (ac:make-actor (lambda (&rest msg) (apply 'actor-send mbox msg)))) ; new actor sends msg to new mbox. BUT WHEN??
+         (new-actor-name (gentemp "OUTPUTTER" :gossip)))
     (unwind-protect
         (progn 
-          (ac:register-actor actor actor-name)
+          (ac:register-actor new-actor new-actor-name)
           (let* ((solicitation (make-solicitation
-                                :reply-to uid
+                                :reply-to uid ; tell original destination to reply to original source
                                 :kind kind
                                 :forward-to t ; neighborcast
                                 :args args))
                  (soluid (uid solicitation)))
-            (send-msg solicitation
-                      uid                   ; destination
-                      actor-name)
+            (send-msg solicitation          ; send-msg now to original SOURCE NODE. Lie and tell it the source was the new-actor. WHY?? :REPLY-TO IS ACTUAL SOURCE.
+                      uid                   ; destination=original source
+                      new-actor-name)       ; Reply will 'percolate' back through the new-actor, which just puts it in the new mbox we just created.
+            ;;; NDY: Why do we need the new actor here at all? Why not just make the srcid that of the new mbox? Dunno.
+            ;;;  mboxes are just queues, but ac:send knows how to 'send' to an mbox.
+            ; Now wait for original destination node to send response back to our new mbox
             (multiple-value-bind (response success) (mpcompat:mailbox-read mbox (* 1.2 *direct-reply-max-seconds-to-wait*))
               ; gotta wait a little longer than *direct-reply-max-seconds-to-wait* because that's how long the actor timeout will take.
               ;   Only after that elapses, will an actor put the value into the mbox.
@@ -975,7 +979,7 @@ dropped on the floor.
                    (first (args (first response))) ; should be a FINAL-REPLY
                    (except :name :TIMEOUT))
                soluid))))
-      (ac:unregister-actor actor-name))))
+      (ac:unregister-actor new-actor-name))))
 
 (defun solicit (node kind &rest args)
   "Send a solicitation to the network starting with given node. This is the primary interface to 
