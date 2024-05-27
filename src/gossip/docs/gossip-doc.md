@@ -95,28 +95,28 @@ April 2018, so it should probably be considered obsolete, except as a record of
 how I approached the problem initially. Much of its API carried forth into the
 actor-based `#P"gossip.lisp"`.
 
-The Overseer vs. The Nodes
---------------------------
+The Oracle vs. The Nodes
+------------------------
 
 Gossip is both a network of actor-based software nodes, and a simulation
 environment for simulating such networks. We're going to call the human who sets
-up a gossip network and runs a simulation the **overseer** herein. The overseer
-is omniscient; gossip nodes are not -- although to have gossip nodes figure out
-things that the overseer knows is often the whole point of a gossip protocol.
+up a gossip network and runs a simulation the **oracle** herein. The oracle is
+omniscient; gossip nodes are not -- although to have gossip nodes figure out
+things that the oracle knows is often the whole point of a gossip protocol.
 
 The *gossip realm* is that which is known by the nodes.
 
-The *overseer realm* completely subsumes the gossip realm and includes
-everything the Lisp process knows.
+The *oracle realm* completely subsumes the gossip realm and includes everything
+the Lisp process knows.
 
 Various constants, global variables, and even functions in this code base are
-intended to be known only by the overseer, and should not be considered
-available for inspection by nodes. This is the **overseer rule**. One example of
-this is the `*nodes*` table which keeps track of all nodes known to this Lisp
-process. Nodes themselves typically only have a priori knowledge of their
-immediate neighbors -- and sometimes they don't even know that much. Sometimes
-part of the mission of a gossip network is for each node to build up a picture
-of the entire network and ideally for all the nodes to agree on that picture.
+intended to be known only by the oracle, and should not be considered available
+for inspection by nodes. This is the **oracle rule**. One example of this is the
+`*nodes*` table which keeps track of all nodes known to this Lisp process. Nodes
+themselves typically only have a priori knowledge of their immediate neighbors
+-- and sometimes they don't even know that much. Sometimes part of the mission
+of a gossip network is for each node to build up a picture of the entire network
+and ideally for all the nodes to agree on that picture.
 
  
 
@@ -150,8 +150,8 @@ and that actor knows which gossip-node it belongs to (via its node slot).
 
  
 
-Overseer API
-------------
+Oracle API
+----------
 
 `#'listify-nodes` returns a list of all nodes in the `*nodes*` table, i.e. all
 nodes known to this machine, including temporary nodes.
@@ -231,7 +231,7 @@ they're useful. If the outside world wants to send a message to the graph, it's
 useful to make a temporary node, set its `neighborhood` to be a few nodes in the
 graph, and then send a message to it. [do we need more here?]
 
-Temporary nodes should probably be renamed 'infrastructure' or 'overseer' nodes
+Temporary nodes should probably be renamed 'infrastructure' or 'oracle' nodes
 because [[I think]] they are only used for infrastructure purposes, not domain
 purposes. In other words they are part of the simulation or test harness
 environment rather than the simulat**ed** environment.
@@ -243,10 +243,10 @@ Node sets
 
 `*nodes*` is the master table of nodes known by the local machine. This includes
 temporary nodes. The nodes themselves don't know about `*nodes*`; it exists
-strictly for the overseer. In gossip this is just a global variable. In David
+strictly for the oracle. In gossip this is just a global variable. In David
 McClain's actors code (upon which gossip rests), he seems to be using an actor
 for this purpose. See `#'ac:register-actor`. Thus while I'm merely using actors
-for the gossip realm, David is using them in the overseer realm as well. Turtles
+for the gossip realm, David is using them in the oracle realm as well. Turtles
 all the way down.
 
 Of course I'm using an actor for logging. See `*logging-actor*.`
@@ -403,8 +403,8 @@ the source followed by the gossip message. As a special case, `#'send-msg` with
 a destuid of 0 broadcasts it to all real nodes in the `*nodes*` database. This
 is intended to be used by incoming-message-handler methods for bootstrapping
 messages before `#'neighbors` connectivity has been established. [[Not sure what
-last 2 sentences mean, except they violate the overseer rule. But it may be the
-case that this mechanism is only used by the overseer anyway.]]
+last 2 sentences mean, except they violate the oracle rule. But it may be the
+case that this mechanism is only used by the oracle anyway.]]
 
  
 
@@ -498,7 +498,7 @@ The concept of the "destination" of a message can be confusing. \#'send-msg has
 a second parameter of the nodeID where the message will be sent. But that's
 merely the next node in a chain. If the message is actually *intended* for a
 specific destination, that destination nodeID is included in the message object,
-as the first value in the list in the args slot. That's why you see` (car (args
+as the first value in the list in the args slot. That's why you see`(car (args
 msg))` in `#'k-singlecast`.
 
  
@@ -686,7 +686,7 @@ checks that there is indeed a gossip-node that contains this actor, extracts the
 `srcuid` which should be the second element of the original message, and calls
 `#'deliver-gossip-msg` on the third element of the original message.
 
-*In other words* the message the actor sees is` (:gossip srcuid
+*In other words* the message the actor sees is`(:gossip srcuid
 #<gossip-message-mixin>)`. It's just the gossip-message prepended with the UID
 of the source gossip-node and the keyword :gossip.
 
@@ -733,7 +733,7 @@ There are two mechanisms of application-handlers: `#'application-handler` and
     itself is nil, it returns a function that just logs the fact that the
     lowlevel-application-handler was reached with the current message. I think
     the main use of `*ll-application-handler*` is that you can stick a function
-    in there for debugging and testing by the overseer, and you can override the
+    in there for debugging and testing by the oracle, and you can override the
     method to return nil if you want to disable all `#'application-handler`s.
 
 2.  `#'application-handler` is only called if `#'lowlevel-application-handler`
