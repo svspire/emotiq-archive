@@ -655,6 +655,25 @@ Network messages are serialized with Sean Ross' `cl-store` library.
 Receiving Messages
 ------------------
 
+Summary:
+
+Several questions have to be asked when a message reaches a node:
+
+Should I accept this message or ignore it? Answered by \#'accept-msg? and
+whether message was specifically
+
+directed at me.
+
+Assuming I accept the message, do I process it locally? Determined by pkind slot
+of message.
+
+If I do process it locally, how do I do so? Determined by \#'application-handler
+and verb slot of message.
+
+Do I forward the message? Determined by pkind and forward-to slots of message.
+
+ 
+
 How does a gossip-node receive a message? The toplevel function is
 \#'gossip-dispatcher, which is where the receiving process begins. The actor
 attached to the node runs this function whenever it sees a new message on its
