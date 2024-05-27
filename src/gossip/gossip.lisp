@@ -1266,18 +1266,19 @@ dropped on the floor.
 
 (defun locally-dispatch-msg (kindsym node msg srcuid)
   "Final dispatcher for messages local to this machine. No validation is done here."
-  (let ((logsym (typecase msg
-                  (solicitation :accepted)
-                  (interim-reply :interim-reply-accepted)
-                  (final-reply :final-reply-accepted)
-                  (t nil) ; don't log timeouts here. Too much noise.
-                  )))
-    (edebug (case logsym
-             (:interim-reply-accepted 4)
-             (:accepted 4)
-             (:final-reply-accepted 4)
-             (t nil))
-           node logsym msg (kind msg) :from srcuid (args msg))
+  (let* ((logsym (typecase msg
+                   (solicitation :accepted)
+                   (interim-reply :interim-reply-accepted)
+                   (final-reply :final-reply-accepted)
+                   (t nil) ; don't log timeouts here. Too much noise.
+                   ))
+         (loglevel (case logsym
+                     (:interim-reply-accepted 4)
+                     (:accepted 4)
+                     (:final-reply-accepted 4)
+                     (t nil))))
+    (when (show-debug-p loglevel)
+      (%edebug node logsym msg (kind msg) :from (lookup-node srcuid) (args msg)))
     (gossip-handler-case
      (funcall kindsym msg node srcuid)
      (error (c) (edebug 1 node :ERROR msg c)))))
@@ -1286,7 +1287,8 @@ dropped on the floor.
   (multiple-value-bind (kindsym failure-reason) (accept-msg? msg node srcuid)
     (cond (kindsym ; message accepted
            (locally-dispatch-msg kindsym node msg srcuid))
-          (t (edebug 4 node :ignore msg :from srcuid failure-reason)))))
+          (t (when (show-debug-p 4)
+               (%edebug 4 :ignore msg :from (lookup-node srcuid) failure-reason))))))
 
 (defmethod locally-receive-msg ((msg gossip-message-mixin) (node gossip-node) srcuid)
   "The main dispatch function for gossip messages. Runs entirely within an actor.
@@ -1298,7 +1300,8 @@ dropped on the floor.
              (memoize-message node msg srcuid)
              (locally-dispatch-msg kindsym node msg srcuid))
             (t ; not accepted
-             (edebug 4 node :ignore msg :from srcuid failure-reason)
+             (when (show-debug-p 4)
+               (%edebug node :ignore msg :from (lookup-node srcuid) failure-reason))
              (case failure-reason
                (:active-ignore ; RECEIVE an active-ignore. Whomever sent it is telling us they're ignoring us.
                 ; Which means we need to ensure we're not waiting on them to reply.
@@ -1307,7 +1310,7 @@ dropped on the floor.
                       (declare (ignore failure-reason)) ; should always be :already-seen, but we're not checking for now
                       (let ((was-present? (cancel-replier node kind (solicitation-uid msg) srcuid)))
                         (when (and was-present?
-                                   (debug-level 4))
+                                   (show-debug-p 4))
                           ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
                           (edebug 1 node :STOP-WAITING msg srcuid))))
                     ; weird. Shouldn't ever happen.
@@ -1321,7 +1324,7 @@ dropped on the floor.
                   ;   but it doesn't hurt anything in other cases.
                   (let ((was-present? (cancel-replier node (kind msg) soluid srcuid)))
                     (when (and was-present?
-                               (debug-level 4))
+                               (show-debug-p 4))
                       ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
                       (edebug 1 node :STOP-WAITING msg srcuid))
                     (unless (neighborcast? msg) ; not neighborcast means use active ignores. Neighborcast doesn't need them.
