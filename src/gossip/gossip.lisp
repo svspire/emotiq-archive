@@ -457,6 +457,16 @@ are in place between nodes.
              It can be an integer n, which means to forward to up to n random neighbors. (This is traditional
              gossip protocol.)
              It can also simply be T, which means to forward to all neighbors. (This is neighborcast protocol.)")
+   (originating-uid :initarg :originating-uid :initform nil :accessor originating-uid
+                    :documentation "UID of the domain node that originated this message. This is part of this message's unique identity and
+             it should never change.
+             EXCEPTION: If this value is nil it is a message that came from the Oracle. The first domain (non-temporary) node that sees
+             a message with a null originating-uid should replace that value with the node's own UID.
+             Non-nil values herein should never be changed.
+             Reply-to may in some cases contain an identical value to this slot, but this slot has no connotation about replies.")
+   (destination-uid :initarg :destination-uid :initform nil :accessor destination-uid
+                    :documentation "UID of node that is the ultimate destination of this message. Always nil except for singlecast messages.
+             This is part of this message's unique identity and it should never change.")
    (reply-to :initarg :reply-to :initform nil :accessor reply-to
              :documentation "Nil for no reply expected. :UPSTREAM or :GOSSIP or :NEIGHBORCAST indicate
              replies should happen by one of those mechanisms, or a UID to request a direct reply to
@@ -1458,13 +1468,13 @@ dropped on the floor.
 (defgeneric lowlevel-application-handler (node)
   (:documentation "Returns something that actor-send can send to, which is associated with node.
    This is used by gossip to forward a raw gossip-message-mixin once it reaches its destination node.
-   Function should accept 2 args: node and gossip-message-mixin."))
+   Function should accept 1 arg: the message."))
 
 (defgeneric application-handler (node)
   (:documentation "Returns something that actor-send can send to, which is associated with node.
     This is used by gossip to forward an application message to its local application destination
     once it reaches its destination node.
-    Function should accept &rest application-message."))
+    Function should accept 1 arg: the message."))
 
 (defmethod lowlevel-application-handler ((node abstract-gossip-node))
   "Default method"
