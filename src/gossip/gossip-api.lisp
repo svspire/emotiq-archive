@@ -30,7 +30,7 @@
           (when startnodeID
             (setf solicitation (make-solicitation
                                 :reply-to nil
-                                :kind :k-singlecast
+                                :pkind :pk-singlecast
                                 :forward-to howmany
                                 :graphID graphID
                                 :args (cons nodeID message)))
@@ -42,7 +42,7 @@
         (progn
           (setf solicitation (make-solicitation
                               :reply-to nil
-                              :kind :k-singlecast
+                              :pkind :pk-singlecast
                               :forward-to nil
                               :args (cons nodeID message)))
           (send-msg solicitation
@@ -55,12 +55,12 @@
       (list thing)))
 
 ; Normally you wouldn't call this as a high-level application programmer. Call broadcast instead.
-(defun gossipcast (message &key (graphID +default-graphid+) startnodeID (howmany 2) (kind ':k-multicast))
+(defun gossipcast (message &key (graphID +default-graphid+) startnodeID (howmany 2) (pkind ':pk-multicast))
   "Sends message via traditional gossip.
   Howmany determines whether traditional gossip or neighborcast is used."
   (let ((solicitation (make-solicitation
                        :reply-to nil
-                       :kind kind
+                       :pkind pkind
                        :forward-to howmany ; traditional gossip
                        :graphID graphID
                        :args (ensure-list message))))
@@ -68,7 +68,7 @@
               startnodeID                   ; destination
               nil)))
 
-(defun broadcast (message &key (style ':neighborcast) (graphID +default-graphid+) startnodeID (kind ':k-multicast))
+(defun broadcast (message &key (style ':neighborcast) (graphID +default-graphid+) startnodeID (pkind ':pk-multicast))
   "High-level API for broadcasting a message along a graph.
    If startnodeID is provided, it will be used as the starting node.
    If startnodeID is not provided, we'll start at some locally-known node that's part of given graphID.
@@ -76,13 +76,13 @@
    Use style = :gossip or some small integer (like 2 or 3) for better scalability on large graphs, at expense of some reliability.
    (An integer--if supplied--represents the maximum number of a node's neighbors to forward the message to.
     :neighborcast means 'use all the neighbors'. :gossip means 'use up to 2 neighbors'.)
-   Normally an API programmer should let :kind default."
+   Normally an API programmer should let :pkind default."
   (unless startnodeID
       (setf startnodeID (locate-local-uid-for-graph graphID)))
   (cond
-    ((eql ':neighborcast style) (gossipcast message :graphID graphID :startnodeID startnodeID :howmany t :kind kind))
-    ((eql ':gossip style)       (gossipcast message :graphID graphID :startnodeID startnodeID :howmany 2 :kind kind))
-    ((integerp style)           (gossipcast message :graphID graphID :startnodeID startnodeID :howmany style :kind kind))
+    ((eql ':neighborcast style) (gossipcast message :graphID graphID :startnodeID startnodeID :howmany t :pkind pkind))
+    ((eql ':gossip style)       (gossipcast message :graphID graphID :startnodeID startnodeID :howmany 2 :pkind pkind))
+    ((integerp style)           (gossipcast message :graphID graphID :startnodeID startnodeID :howmany style :pkind pkind))
     (t (error "Invalid style ~S" style))))
 
 ; NDY: This needs to replace ping-other-machines for bootstrapping. Need to invent a singlecast hello message mechanism.
@@ -97,7 +97,7 @@
    graphID here is merely the graph traversed by this message; this does not connect nodes to any given
    graph except for the :uber graph.
    This is the 'push' equivalent of the 'pull' function #'ping-other-machines."
-  (broadcast (list pkey ipaddr ipport) :style style :graphID graphID :startnodeID startnodeID :kind ':k-hello))
+  (broadcast (list pkey ipaddr ipport) :style style :graphID graphID :startnodeID startnodeID :pkind ':pk-hello))
 
 ; Example:
 ; Assume (locate-local-uid-for-graph ':uber) on this machine returns X.
@@ -144,7 +144,7 @@
     (when startnodeID
       (let ((solicitation (make-solicitation
                            :reply-to nil
-                           :kind :k-dissolve
+                           :pkind :pk-dissolve
                            :forward-to t ; neighborcast, although dissolve handler will enforce this regardless
                            :graphID graphID 
                            :args nil)))

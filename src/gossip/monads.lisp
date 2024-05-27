@@ -72,10 +72,10 @@
 ;; THE PROBLEM HERE is that we need to specifically NOT coalesce the data if the values of similar keys in the metadata differ.
 ;; In that case, we should just return a list of both monads. Which means that the function this returns must also
 ;; be able to accept a list in its first argument. Second argument will always be a singleton augmented-data object.
-(defun coalescer (kind)
-"Reduction function for a particular message kind.
+(defun coalescer (pkind)
+"Reduction function for a particular message pkind.
   Must accept two augmented-data monads and produce a third."
-  (let ((dc (data-coalescer kind)))
+  (let ((dc (data-coalescer pkind)))
     (lambda (ad1 ad2)
       (cond ((consp ad1) ; ad1 is a list. So output will always be a list of the same length*, or 1 longer**.
              ;   * if metadata of ad2 matches one of the ad1 metadatas (it cannot possibly match more than one)***

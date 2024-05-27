@@ -69,11 +69,11 @@
 
 (defvar *ll-application-handler* nil "Set to a function to be called when the API methods reach their target.")
 
-(defmacro with-protocol-style ((kind &optional (n 2)) &body body)
+(defmacro with-protocol-style ((pkind &optional (n 2)) &body body)
   ; Use this rather than set-protocol-style directly, as this binds/unbinds the proper globals properly
   `(let ((*use-all-neighbors* *use-all-neighbors*)
          (*active-ignores* *active-ignores*))
-     (set-protocol-style ,kind ,n)
+     (set-protocol-style ,pkind ,n)
      ,@body))
 
 ;; ------------------------------------------------------------------------------
@@ -138,19 +138,19 @@ in KEYWORDS removed."
 
 ;;; DEPRECATE. Use forward-to slot on messages for this now, which is how newer functions like #'broadcast work.
 ;;;   Or use with-protocol-style, which only temporarily binds the globals.
-(defun set-protocol-style (kind &optional (n 2))
+(defun set-protocol-style (pkind &optional (n 2))
   "Set style of protocol.
    :gossip style to pick one neighbor at random to send solicitations to.
       There's no guarantee this will reach all nodes. But it's quicker and more realistic.
    :neighborcast   style to send solicitations to all neighbors. More likely to reach all nodes but replies may be slower.
    Neither style should result in timeouts of a node waiting forever for a response from a neighbor.
    Domain code should not call this directly--use with-protocol-style instead."
-  (case kind
+  (case pkind
     (:gossip (setf *use-all-neighbors* n
                    *active-ignores* t))  ; must be true when *use-all-neighbors* is nil. Otherwise there will be timeouts.
     (:neighborcast  (setf *use-all-neighbors* t
                    *active-ignores* nil)))
-  kind)
+  pkind)
 
 (defun get-protocol-style ()
   "Get style of protocol. See set-protocol-style."
@@ -425,10 +425,14 @@ are in place between nodes.
               :documentation "Timestamp of message origination")
    (hopcount :initarg :hopcount :initform 0 :accessor hopcount
              :documentation "Number of hops this message has traversed.")
-   (kind :initarg :kind :initform nil :accessor kind
-         :documentation "The verb of the message, indicating what action to take.")
+   (pkind :initarg :pkind :initform nil :accessor pkind
+         :documentation "The propagation style of the message, indicating what whether to propagate the message and how.")
+   ;;; NDY: Pkind has been overloaded in the past as the verb in many cases. This needs to be fixed.
+   (verb :initarg :verb :initform nil :accessor verb
+         :documentation "The function a node that accepts this message and decides to process it will run.
+         For use by application-handler. This does NOT determine how propagation happens. That's the domain of pkind.")
    (args :initarg :args :initform nil :accessor args
-         :documentation "Payload of the message. Arguments to kind. Usually a list whose first element is the ultimate intended destination nodeID.")
+         :documentation "Payload of the message. Arguments to verb. Usually a list whose first element is the ultimate intended destination nodeID.")
    ))
 
 (defgeneric copy-message (msg)
@@ -441,7 +445,7 @@ are in place between nodes.
                    :uid (uid msg)
                    :timestamp (timestamp msg)
                    :hopcount (hopcount msg)
-                   :kind (kind msg)
+                   :pkind (pkind msg)
                    :args (args msg))))
     new-msg))
 
@@ -531,7 +535,7 @@ are in place between nodes.
 
 (defun make-system-async (&rest args)
   (let ((msg (apply 'make-instance 'system-async args)))
-    (when (and (eql :timeout (kind msg))
+    (when (and (eql :timeout (pkind msg))
                (null (solicitation-uid msg)))
       (error "No solicitation-uid on timeout"))
     msg))
@@ -732,7 +736,7 @@ are in place between nodes.
     (set-uid node pkey))
   (memoize-node node))
 
-(defmethod make-node ((kind (eql :gossip)) &rest rest &key pkey skey &allow-other-keys)
+(defmethod make-node ((pkind (eql :gossip)) &rest rest &key pkey skey &allow-other-keys)
   (with-keywords-removed (rest (:pkey :skey))
     (let ((node (apply '%make-node rest)))
       (initialize-node node :pkey pkey :skey skey)
@@ -776,8 +780,10 @@ are in place between nodes.
 
 ;;;; Graph making routines. Mostly just for testing and simulation, because these only work on local machine.
 (defun make-nodes (numnodes &optional (type ':gossip))
-  (dotimes (i numnodes)
-    (make-node type)))
+  (let ((nodes nil))
+    (dotimes (i numnodes)
+      (push (make-node type) nodes))
+    nodes))
 
 (defun listify-nodes ()
   (local-nodes-matching t))
@@ -948,7 +954,7 @@ dropped on the floor.
                        (error (e) e)))
 
 ;; NOTE: "direct" here refers to the mode of reply, not the mode of sending.
-(defun solicit-direct (node kind &rest args)
+(defun solicit-direct (node pkind &rest args)
   "Like solicit-wait but asks for all replies to be sent back to node directly, rather than percolated upstream.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
   (unless node
@@ -962,7 +968,7 @@ dropped on the floor.
           (ac:register-actor new-actor new-actor-name)
           (let* ((solicitation (make-solicitation
                                 :reply-to uid ; tell original destination to reply to original source
-                                :kind kind
+                                :pkind pkind
                                 :forward-to t ; neighborcast
                                 :args args))
                  (soluid (uid solicitation)))
@@ -982,7 +988,8 @@ dropped on the floor.
                soluid))))
       (ac:unregister-actor new-actor-name))))
 
-(defun solicit (node kind &rest args)
+;;; NDY: Deprecate? Use e.g. #'broadcast instead?
+(defun solicit (node pkind &rest args)
   "Send a solicitation to the network starting with given node. This is the primary interface to 
   the network to start an action from the outside. Nodes shouldn't use this function to initiate an
   action because they should set the srcuid parameter to be their own rather than nil."
@@ -990,7 +997,7 @@ dropped on the floor.
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
   (let ((uid (as-uid node)))
     (let* ((solicitation (make-solicitation
-                          :kind kind
+                          :pkind pkind
                           :args args))
            (soluid (uid solicitation)))
       (send-msg solicitation
@@ -998,7 +1005,7 @@ dropped on the floor.
                 nil)     ; srcuid
       soluid)))
 
-(defun solicit-wait (node kind &rest args)
+(defun solicit-wait (node pkind &rest args)
   "Like solicit but waits for a reply. Only works for :UPSTREAM replies.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
   (unless node
@@ -1012,7 +1019,7 @@ dropped on the floor.
           (ac:register-actor actor actor-name)
           (let* ((solicitation (make-solicitation
                                 :reply-to :UPSTREAM
-                                :kind kind
+                                :pkind pkind
                                 :args args))
                  (soluid (uid solicitation)))
             (send-msg solicitation
@@ -1029,7 +1036,7 @@ dropped on the floor.
                soluid))))
       (ac:unregister-actor actor-name))))
 
-(defun solicit-progress (node kind &rest args)
+(defun solicit-progress (node pkind &rest args)
   "Like solicit-wait but prints periodic progress log messages (if any)
   associated with this node to listener.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
@@ -1045,7 +1052,7 @@ dropped on the floor.
              (setf response message)))
       (let* ((solicitation (make-solicitation
                             :reply-to :UPSTREAM
-                            :kind kind
+                            :pkind pkind
                             :args args))
              (soluid (uid solicitation)))
         (unwind-protect
@@ -1152,8 +1159,8 @@ dropped on the floor.
 ;;;  TODO: Might want to also check hopcount and reject message where hopcount is too large.
 ;;;        Might want to not accept maybe-sir messages at all if their soluid is expired.
 (defmethod accept-msg? ((msg gossip-message-mixin) (thisnode gossip-node) srcuid)
-  "Returns kindsym if this message should be accepted by this node, nil and a failure-reason otherwise.
-  Kindsym is the name of the gossip method that should be called to handle this message.
+  "Returns pkindsym if this message should be accepted by this node, nil and a failure-reason otherwise.
+  Pkindsym is the name of the gossip method that should be called to handle and propagate this message.
   Doesn't change anything in message or node."
   (declare (ignore srcuid)) ; not using this for acceptance criteria in the general method
   (let ((soluid (uid msg))
@@ -1165,30 +1172,30 @@ dropped on the floor.
              (cond (already-seen? ; Ignore if already seen
                     (values nil :already-seen))
                    (t ; it's a new message
-                    (let* ((kind (kind msg))
-                           (kindsym nil))
-                      (cond (kind
-                             (setf kindsym (intern (symbol-name kind) :gossip))
-                             (if (and kindsym (fboundp kindsym))
-                                 kindsym ;; SUCCESS! We accept the message.
-                                 (values nil (list :unknown-kind kindsym))))
+                    (let* ((pkind (pkind msg))
+                           (pkindsym nil))
+                      (cond (pkind
+                             (setf pkindsym (intern (symbol-name pkind) :gossip))
+                             (if (and pkindsym (fboundp pkindsym))
+                                 pkindsym ;; SUCCESS! We accept the message.
+                                 (values nil (list :unknown-kind pkindsym))))
                             (t
-                             (values nil :no-kind)))))))))))
+                             (values nil :no-pkind)))))))))))
 
 (defmethod accept-msg? ((msg reply) (thisnode gossip-node) srcuid)
-  (if (eql :active-ignore (kind msg))
+  (if (eql :active-ignore (pkind msg))
       (values nil :active-ignore)
-      (multiple-value-bind (kindsym failure-reason) (call-next-method) ; the one on gossip-message-mixin
+      (multiple-value-bind (pkindsym failure-reason) (call-next-method) ; the one on gossip-message-mixin
         ; Also ensure this reply is actually expected
-        (cond (kindsym
+        (cond (pkindsym
                (let ((interim-table (kvs:lookup-key (repliers-expected thisnode) (vec-repr:bev-vec (solicitation-uid msg)))))
                  (cond (interim-table
                         (if (eql :ANONYMOUS interim-table) ; accept replies from any srcuid
-                            kindsym
+                            pkindsym
                             (multiple-value-bind (val present-p) (kvs:lookup-key interim-table (vec-repr:bev-vec srcuid))
                               (declare (ignore val))
                               (if present-p
-                                  kindsym
+                                  pkindsym
                                   (values nil :unexpected-1)))))
                        (t (values nil :unexpected-2)))))
               (t (values nil failure-reason))))))
@@ -1196,7 +1203,7 @@ dropped on the floor.
 (defmethod accept-msg? ((msg system-async) (thisnode abstract-gossip-node) srcuid)
   (declare (ignore srcuid))
   ; system-asyncs are always accepted
-  (intern (symbol-name (kind msg)) :gossip))
+  (intern (symbol-name (pkind msg)) :gossip))
 
 ;;; TODO: Remove old entries in message-cache, eventually.
 (defmethod memoize-message ((node gossip-node) (msg gossip-message-mixin) srcuid)
@@ -1254,17 +1261,17 @@ dropped on the floor.
   (let ((all-neighbors (remove srcuid (neighborhood node graphID) :test 'uid=)))
     (use-some-neighbors all-neighbors howmany)))
 
-(defun send-active-ignore (to from kind soluid failure-reason)
+(defun send-active-ignore (to from pkind soluid failure-reason)
   "Actively send a reply message to srcuid telling it we're ignoring it."
   (let ((msg (make-interim-reply
               :solicitation-uid soluid
-              :kind :active-ignore
-              :args (list kind failure-reason))))
+              :pkind :active-ignore
+              :args (list pkind failure-reason))))
     (send-msg msg
               to
               from)))
 
-(defun locally-dispatch-msg (kindsym node msg srcuid)
+(defun locally-dispatch-msg (pkindsym node msg srcuid)
   "Final dispatcher for messages local to this machine. No validation is done here."
   (let* ((logsym (typecase msg
                    (solicitation :accepted)
@@ -1278,27 +1285,27 @@ dropped on the floor.
                      (:final-reply-accepted 4)
                      (t nil))))
     (when (show-debug-p loglevel)
-      (%edebug node logsym msg (kind msg) :from (lookup-node srcuid) (args msg)))
+      (%edebug node logsym msg (pkind msg) :from (lookup-node srcuid) (args msg)))
     (gossip-handler-case
-     (funcall kindsym msg node srcuid)
+     (funcall pkindsym msg node srcuid)
      (error (c) (edebug 1 node :ERROR msg c)))))
 
 (defmethod locally-receive-msg ((msg system-async) (node abstract-gossip-node) srcuid)
-  (multiple-value-bind (kindsym failure-reason) (accept-msg? msg node srcuid)
-    (cond (kindsym ; message accepted
-           (locally-dispatch-msg kindsym node msg srcuid))
+  (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
+    (cond (pkindsym ; message accepted
+           (locally-dispatch-msg pkindsym node msg srcuid))
           (t (when (show-debug-p 4)
                (%edebug 4 :ignore msg :from (lookup-node srcuid) failure-reason))))))
 
 (defmethod locally-receive-msg ((msg gossip-message-mixin) (node gossip-node) srcuid)
   "The main dispatch function for gossip messages. Runs entirely within an actor.
   First checks to see whether this message should be accepted by the node at all, and if so,
-  it calls the function named in the kind field of the message to handle it."
+  it calls the function named in the pkind field of the message to handle it."
   (let ((soluid (uid msg)))
-    (multiple-value-bind (kindsym failure-reason) (accept-msg? msg node srcuid)
-      (cond (kindsym ; message accepted
+    (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
+      (cond (pkindsym ; message accepted
              (memoize-message node msg srcuid)
-             (locally-dispatch-msg kindsym node msg srcuid))
+             (locally-dispatch-msg pkindsym node msg srcuid))
             (t ; not accepted
              (when (show-debug-p 4)
                (%edebug node :ignore msg :from (lookup-node srcuid) failure-reason))
@@ -1306,9 +1313,9 @@ dropped on the floor.
                (:active-ignore ; RECEIVE an active-ignore. Whomever sent it is telling us they're ignoring us.
                 ; Which means we need to ensure we're not waiting on them to reply.
                 (if (typep msg 'interim-reply) ; should never be any other type
-                    (destructuring-bind (kind failure-reason) (args msg)
+                    (destructuring-bind (pkind failure-reason) (args msg)
                       (declare (ignore failure-reason)) ; should always be :already-seen, but we're not checking for now
-                      (let ((was-present? (cancel-replier node kind (solicitation-uid msg) srcuid)))
+                      (let ((was-present? (cancel-replier node pkind (solicitation-uid msg) srcuid)))
                         (when (and was-present?
                                    (show-debug-p 4))
                           ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
@@ -1322,13 +1329,13 @@ dropped on the floor.
                   ;   *use-all-neighbors* = true and
                   ;   *active-ignores* = false [:neighborcast protocol]
                   ;   but it doesn't hurt anything in other cases.
-                  (let ((was-present? (cancel-replier node (kind msg) soluid srcuid)))
+                  (let ((was-present? (cancel-replier node (pkind msg) soluid srcuid)))
                     (when (and was-present?
                                (show-debug-p 4))
                       ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
                       (edebug 1 node :STOP-WAITING msg srcuid))
                     (unless (neighborcast? msg) ; not neighborcast means use active ignores. Neighborcast doesn't need them.
-                      (send-active-ignore srcuid (uid node) (kind msg) soluid failure-reason)))))
+                      (send-active-ignore srcuid (uid node) (pkind msg) soluid failure-reason)))))
                (t nil)))))))
 
 (defmethod locally-receive-msg ((msg t) (thisnode proxy-gossip-node) srcuid)
@@ -1350,7 +1357,7 @@ dropped on the floor.
            :gossip
            'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
            (make-system-async :solicitation-uid soluid
-                         :kind :timeout)))
+                         :pkind :timeout)))
 
 (defun schedule-gossip-timeout (delta actor soluid)
   "Call this to schedule a timeout message to be sent to an actor after delta seconds from now.
@@ -1361,7 +1368,7 @@ dropped on the floor.
       (ac::schedule-timer-relative timer (ceiling delta)) ; delta MUST be an integer number of seconds here
       timer)))
 
-(defmethod make-timeout-handler ((node gossip-node) (msg solicitation) #-LISPWORKS (kind keyword) #+LISPWORKS (kind symbol))
+(defmethod make-timeout-handler ((node gossip-node) (msg solicitation) #-LISPWORKS (pkind keyword) #+LISPWORKS (pkind symbol))
   (let ((soluid (uid msg)))
     (lambda (timed-out-p)
       "Cleanup operations if timeout happens, or all expected replies come in. This won't hurt anything
@@ -1378,7 +1385,7 @@ dropped on the floor.
                      (t ; note: Following log message doesn't necessarily mean anything is wrong.
                       ; If node is singly-connected to the graph, it's to be expected
                       (edebug 1 node :NO-TIMER-FOUND msg)))))
-        (coalesce&reply (reply-to msg) node kind soluid)))))
+        (coalesce&reply (reply-to msg) node pkind soluid)))))
 
 (defmethod prepare-repliers ((thisnode gossip-node) soluid downstream)
   "Prepare reply tables for given node, solicitation uid, and set of downstream repliers."
@@ -1395,7 +1402,7 @@ dropped on the floor.
 ;;; Timeout. Generic message handler for all methods that scheduled a timeout.
 ;;; These never expect a reply but they can happen for methods that did expect one.
 (defmethod timeout ((msg system-async) thisnode srcuid)
-  "Timeouts are a special kind of message in the gossip protocol,
+  "Timeouts are a special pkind of message in the gossip protocol,
   and they're typically sent by a special timer thread."
   (cond ((eq srcuid 'ac::*master-timer*)
          ;;(edebug 1 thisnode :timing-out msg :from srcuid (solicitation-uid msg))
@@ -1446,7 +1453,7 @@ dropped on the floor.
     ; thisnode becomes new source for forwarding purposes
     (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
 
-;;; These are the message kinds used by the high-level application programmer's gossip api.
+;;; These are the message pkinds used by the high-level application programmer's gossip api.
 
 (defgeneric lowlevel-application-handler (node)
   (:documentation "Returns something that actor-send can send to, which is associated with node.
@@ -1462,51 +1469,78 @@ dropped on the floor.
 (defmethod lowlevel-application-handler ((node abstract-gossip-node))
   "Default method"
   (or *ll-application-handler*
-      (lambda (node msg)
+      (lambda (msg)
         (edebug 7 node :LL-APPLICATION-HANDLER msg))))
 
 (defmethod application-handler ((node abstract-gossip-node))
   "Default method"
-  (lambda (&rest args)
-    (apply 'edebug 6 node :APPLICATION-HANDLER args)))
+  (lambda (msg)
+    (edebug 6 node :APPLICATION-HANDLER msg)))
 
-(defun handoff-to-application-handlers (node msg highlevel-message-extractor)
+(defun handoff-to-application-handlers (node msg)
   (let ((lowlevel-application-handler (lowlevel-application-handler node))
         (application-handler (application-handler node)))
     (when lowlevel-application-handler ; mostly for gossip's use, not the application programmer's
-      (uiop:if-let (error (actor-send lowlevel-application-handler node msg))
+      (uiop:if-let (error (actor-send lowlevel-application-handler msg))
         (if *gossip-absorb-errors*
             (edebug 1 node :ERROR error msg)
             (error error)))
       (when application-handler
-        (uiop:if-let (error (apply 'actor-send application-handler (funcall highlevel-message-extractor msg)))
+        (uiop:if-let (error (actor-send application-handler msg))
           (if *gossip-absorb-errors*
               (edebug 1 node :ERROR error msg)
               (error error)))))))
 
-; The "k" in these names came from the 'kind slot of messages; The "k" distinguishes internal gossip
+; The "pk" in these names came from the 'pkind slot of messages; The "pk" distinguishes internal gossip
 ;   method names from the API functions that use them. Probably oughta just put the API functions in a different package.
-(defmethod k-singlecast ((msg solicitation) thisnode srcuid)
+;;; NDY: 
+
+#|
+Edict 71: All pk-xx methods and :pkinds should be strictly for use in determining propagation style.
+Rationale: It's time to start using application-handlers for what they were designed for -- even though apparently I never
+used them before -- and stop conflating [how messages propagate] with [how nodes process messages locally].
+The former will now be governed by the pkind slot of the message, and the latter will now be governed by the verb slot
+of the message.
+
+Propagation style determines:
+  1. Whether to call #'handoff-to-application-handlers or not
+  2. Whether to forward this message or not.
+ 
+Propagation style (i.e. pkind) does NOT determine _how_ to handle the message locally. IOW, if #'handoff-to-application-handlers
+   is called, the pkind value is now out of the picture, and the verb slot dictates what to do next.
+   The only exceptions should be certain infrastructural operations like pk-dissolve and maybe pk-connect.
+
+Methods that seem to violate Edict 71 that should be corrected to become verbs:
+gossip-relate
+gossip-relate-unique
+gossip-remove-key
+gossip-tally
+generic-srr-handler (and other reply mechanisms)
+
+All the above need to be turned into verb-driven application-handlers because they have nothing to do with propagation.
+|#
+
+(defmethod pk-singlecast ((msg solicitation) thisnode srcuid)
   "Send a message to one and only one node. Application message is expected to be in (cdr args) of the solicitation.
   Destination node is expected to be in (car args) of the solicitation.
   Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
   Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
   Destination node is not expected to reply (at least not with builtin gossip-style replies)."
   (if (uid= (uid thisnode) (car (args msg)))
-      (handoff-to-application-handlers thisnode msg (lambda (msg) (cdr (args msg))))
+      (handoff-to-application-handlers thisnode msg)
       ; thisnode becomes new source for forwarding purposes
       (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
 
-(defmethod k-multicast ((msg solicitation) thisnode srcuid)
+(defmethod pk-multicast ((msg solicitation) thisnode srcuid)
   "Announce a message to the collective. Application message is expected to be in args of the solicitation.
   Every intermediate node will have the message
   both delivered to it AND forwarded through it.
   Recipient nodes are not expected to reply (at least not with builtin gossip-style replies)."
-  (handoff-to-application-handlers thisnode msg 'args)
+  (handoff-to-application-handlers thisnode msg)
    ; thisnode becomes new source for forwarding purposes
   (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg))))
 
-(defmethod k-hello ((msg solicitation) thisnode srcuid)
+(defmethod pk-hello ((msg solicitation) thisnode srcuid)
   "Announce a UID, IP address, and port to the collective.
   (This is different from the automatic ensure-proxy-node that happens with every incoming
    connection because that implicitly proxifies only the immediate upstream sender.
@@ -1521,7 +1555,7 @@ dropped on the floor.
 ;;; *automatically-created ensure-proxy-nodes probably need to go away--even for solicitations expecting replies--
 ;;;    because solicitations expecting replies themselves need to go away.
 
-(defmethod k-dissolve ((msg solicitation) thisnode srcuid)
+(defmethod pk-dissolve ((msg solicitation) thisnode srcuid)
   "Commands every node it passes through to dissolve connections associated with a given graphID.
    Always uses full neighborcast, i.e. ignores the forward-to slot of the message."
   (forward msg thisnode (get-downstream thisnode srcuid t (graphID msg)))
@@ -1529,11 +1563,11 @@ dropped on the floor.
   (dissolve-neighborhood thisnode (graphID msg)))
 
 ;;; NOT DONE YET
-(defmethod k-connect ((msg solicitation) thisnode srcuid)
+(defmethod pk-connect ((msg solicitation) thisnode srcuid)
   "Tells nodes this message passes through to connect to each other with given graphID"
   )
 
-;;; Message kinds used by gossip itself
+;;; Message pkinds used by gossip itself
 
 (defmethod gossip-relate ((msg solicitation) thisnode srcuid)
   "Establishes a global non-unique key/value pair. If key currently has a value or set of values,
@@ -1613,15 +1647,15 @@ dropped on the floor.
 ;; But of course if there are NO downstream nodes, we cannot expect any replies by definition, so coalescence is not necessary.
 (defmethod generic-srr-handler ((msg solicitation) (thisnode gossip-node) srcuid)
   "Generic handler for solicitations requiring replies (SRRs)"
-  (let* ((kind (kind msg))
+  (let* ((pkind (pkind msg))
          (soluid (uid msg))
          (downstream (get-downstream thisnode srcuid (forward-to msg) (graphID msg))) ; don't forward to the source of this solicitation
          (timer nil)
          (seconds-to-wait *max-seconds-to-wait*)
-         (cleanup (make-timeout-handler thisnode msg kind)))
+         (cleanup (make-timeout-handler thisnode msg pkind)))
     (flet ((initialize-reply-cache ()
              "Set up node's reply-cache with initial-reply-value for this message"
-             (kvs:relate-unique! (reply-cache thisnode) (vec-repr:bev-vec soluid) (initial-reply-value kind thisnode (args msg))))
+             (kvs:relate-unique! (reply-cache thisnode) (vec-repr:bev-vec soluid) (initial-reply-value pkind thisnode (args msg))))
            
            (must-coalesce? ()
              "Returns true if this node must coalesce any incoming replies.
@@ -1660,16 +1694,16 @@ dropped on the floor.
                    (t ; just forward the message since there won't be an :UPSTREAM reply
                     (forward msg thisnode downstream)
                     ; No cleanup necessary because even though we had a downstream, we never expected any replies.
-                    (send-final-reply thisnode (reply-to msg) soluid kind (initial-reply-value kind thisnode (args msg))))))
+                    (send-final-reply thisnode (reply-to msg) soluid pkind (initial-reply-value pkind thisnode (args msg))))))
             (t ; No downstream. This is a leaf node. No coalescence is possible, which implies no cleanup is necessary.
-             (send-final-reply thisnode (reply-to msg) soluid kind (initial-reply-value kind thisnode (args msg))))))))
+             (send-final-reply thisnode (reply-to msg) soluid pkind (initial-reply-value pkind thisnode (args msg))))))))
 
 ; No node should ever receive an interim or final reply unless it was expecting one by virtue
 ;  of the original solicitation having a reply-to slot of :UPSTREAM or the UID of the node itself.
 ;  So there's no special handling in the methods for interim-reply or final-reply of other reply modes.
 ;  Besides, :GOSSIP and :NEIGHBORCAST reply modes will never cause the creation of a true reply message anyway.
 (defmethod generic-srr-handler ((msg interim-reply) (thisnode gossip-node) srcuid)
-  (let ((kind (kind msg))
+  (let ((pkind (pkind msg))
         (soluid (solicitation-uid msg)))
     ; First record the data in the reply appropriately
     (unless (eql :ANONYMOUS (kvs:lookup-key (repliers-expected thisnode) (vec-repr:bev-vec soluid))) ; ignore interim-replies to anonymous expectations
@@ -1677,59 +1711,59 @@ dropped on the floor.
         ; coalesce all known data and send it upstream as another interim reply.
         ; (if this reply is not later, drop it on the floor)
         (if *delay-interim-replies*
-            (send-delayed-interim-reply thisnode kind soluid)
+            (send-delayed-interim-reply thisnode pkind soluid)
             (let ((upstream-source (get-upstream-source thisnode (solicitation-uid msg))))
-              (send-interim-reply thisnode kind soluid upstream-source)))))))
+              (send-interim-reply thisnode pkind soluid upstream-source)))))))
 
 (defun run-coalescer (coalescer local-data new-data)
   (funcall coalescer local-data new-data))
 
 (defmethod generic-srr-handler ((msg final-reply) (thisnode gossip-node) srcuid)
   (edebug 1 :generic-srr-handler :final-reply msg thisnode)
-  (let* ((kind (kind msg))
+  (let* ((pkind (pkind msg))
          (soluid (solicitation-uid msg))
          (local-data (kvs:lookup-key (reply-cache thisnode) (vec-repr:bev-vec soluid)))
-         (coalescer (coalescer kind)))
+         (coalescer (coalescer pkind)))
     ; Any time we get a final reply, we destructively coalesce its data into local reply-cache
     (kvs:relate-unique! (reply-cache thisnode)
                         (vec-repr:bev-vec soluid)
                         (run-coalescer coalescer local-data (first (args msg))))
-    (cancel-replier thisnode kind soluid srcuid)))
+    (cancel-replier thisnode pkind soluid srcuid)))
 
-(defgeneric initial-reply-value (kind thisnode msgargs)
-  (:documentation "Initial the reply-value for the given kind of message. Must return an augmented-data object."))
+(defgeneric initial-reply-value (pkind thisnode msgargs)
+  (:documentation "Initial the reply-value for the given pkind of message. Must return an augmented-data object."))
 
-(defmethod maybe-augment-datum ((datum augmented-data) kind)
-  (declare (ignore kind))
+(defmethod maybe-augment-datum ((datum augmented-data) pkind)
+  (declare (ignore pkind))
   datum)
 
-(defmethod maybe-augment-datum (datum kind)
-  (augment datum `((:kind . ,kind) (:eripa . ,(eripa)) (:port . ,*actual-tcp-gossip-port*))))
+(defmethod maybe-augment-datum (datum pkind)
+  (augment datum `((:pkind . ,pkind) (:eripa . ,(eripa)) (:port . ,*actual-tcp-gossip-port*))))
 
-(defmethod initial-reply-value :around (kind thisnode msgargs)
+(defmethod initial-reply-value :around (pkind thisnode msgargs)
   "Ensure an augmented-data object is getting returned."
   (declare (ignore thisnode msgargs))
   (let ((datum (call-next-method)))
-    (maybe-augment-datum datum kind)))
+    (maybe-augment-datum datum pkind)))
 
-(defmethod initial-reply-value ((kind (eql :gossip-lookup-key)) (thisnode gossip-node) msgargs)
+(defmethod initial-reply-value ((pkind (eql :gossip-lookup-key)) (thisnode gossip-node) msgargs)
   (let* ((key (first msgargs))
          (myvalue (kvs:lookup-key (local-kvs thisnode) key)))
     (list (cons myvalue 1))))
 
-(defmethod initial-reply-value ((kind (eql :count-alive)) (thisnode gossip-node) msgargs)
+(defmethod initial-reply-value ((pkind (eql :count-alive)) (thisnode gossip-node) msgargs)
   (declare (ignore msgargs))
   1)
 
-(defmethod initial-reply-value ((kind (eql :list-alive)) (thisnode gossip-node) msgargs)
+(defmethod initial-reply-value ((pkind (eql :list-alive)) (thisnode gossip-node) msgargs)
   (declare (ignore msgargs))
   (list (uid thisnode)))
 
-(defmethod initial-reply-value ((kind (eql :find-max)) (thisnode gossip-node) msgargs)
+(defmethod initial-reply-value ((pkind (eql :find-max)) (thisnode gossip-node) msgargs)
   (let ((key (first msgargs)))
     (kvs:lookup-key (local-kvs thisnode) key)))
 
-(defmethod initial-reply-value ((kind (eql :find-min)) (thisnode gossip-node) msgargs)
+(defmethod initial-reply-value ((pkind (eql :find-min)) (thisnode gossip-node) msgargs)
   (let ((key (first msgargs)))
     (kvs:lookup-key (local-kvs thisnode) key)))
 
@@ -1759,10 +1793,10 @@ dropped on the floor.
 
 ;;; REPLY SUPPORT ROUTINES
 
-(defun send-final-reply (srcnode destination soluid kind data)
+(defun send-final-reply (srcnode destination soluid pkind data)
   "Return nil if successful; an error object otherwise."
   (let ((reply (make-final-reply :solicitation-uid soluid
-                                 :kind kind
+                                 :pkind pkind
                                  :args (list data)))
         (where-to-send-reply (cond ((uid? destination)
                                     destination)
@@ -1819,7 +1853,7 @@ dropped on the floor.
   (let ((coalesced-data (coalesce thisnode reply-kind soluid)))
     (if (uid? where-to-send-reply) ; should be a uid or T. Might be nil if there's a bug.
         (let ((reply (make-interim-reply :solicitation-uid soluid
-                                         :kind reply-kind
+                                         :pkind reply-kind
                                          :args (list coalesced-data))))
           (edebug 4 thisnode :SEND-INTERIM-REPLY reply :to where-to-send-reply coalesced-data)
           (send-msg reply
@@ -1837,7 +1871,7 @@ dropped on the floor.
   ; Should we make these things be yet another class with solicitation-uid-slot?
   ; Or just make a general class of administrative messages with timeout being one?
   (let ((msg (make-solicitation
-              :kind :maybe-sir
+              :pkind :maybe-sir
               :args (list soluid reply-kind))))
     (edebug 4 thisnode :ECHO-MAYBE-SIR nil)
     (send-self msg)))
@@ -1893,24 +1927,24 @@ dropped on the floor.
       (set-previous-reply node soluid srcuid new-reply)
       t)))
 
-(defgeneric data-coalescer (kind)
-  (:documentation "Coalescer (reducer) for two arguments for a given kind of reply."))
+(defgeneric data-coalescer (pkind)
+  (:documentation "Coalescer (reducer) for two arguments for a given pkind of reply."))
 
-(defmethod data-coalescer ((kind (eql :COUNT-ALIVE)))
+(defmethod data-coalescer ((pkind (eql :COUNT-ALIVE)))
   "Proper coalescer for :count-alive responses."
   '+)
 
-(defmethod data-coalescer ((kind (eql :LIST-ALIVE)))
+(defmethod data-coalescer ((pkind (eql :LIST-ALIVE)))
   "Proper coalescer for :list-alive responses. Might
    want to add a call to remove-duplicates here if we start
    using a gossip protocol not guaranteed to ignore redundancies)."
   'append)
 
-(defmethod data-coalescer ((kind (eql :GOSSIP-LOOKUP-KEY)))
+(defmethod data-coalescer ((pkind (eql :GOSSIP-LOOKUP-KEY)))
   "Proper coalescer for :GOSSIP-LOOKUP-KEY responses."
   'multiple-tally)
 
-(defmethod data-coalescer ((kind (eql :FIND-MAX)))
+(defmethod data-coalescer ((pkind (eql :FIND-MAX)))
   (lambda (x y) (cond ((and (numberp x)
                             (numberp y))
                        (max x y))
@@ -1920,7 +1954,7 @@ dropped on the floor.
                        y)
                       (t nil))))
 
-(defmethod data-coalescer ((kind (eql :FIND-MIN)))
+(defmethod data-coalescer ((pkind (eql :FIND-MIN)))
   (lambda (x y) (cond ((and (numberp x)
                             (numberp y))
                        (min x y))
@@ -1930,9 +1964,9 @@ dropped on the floor.
                        y)
                       (t nil))))
 
-(defmethod coalesce ((node gossip-node) kind soluid)
+(defmethod coalesce ((node gossip-node) pkind soluid)
   "Grab all the data that interim repliers have sent me so far, combine it with my
-  local reply-cache in a way that's specific to kind, and return result.
+  local reply-cache in a way that's specific to pkind, and return result.
   This purely functional and does not change reply-cache.
   This is essentially a reduce operation but of course we can't use that name."
   (let* ((local-data    (kvs:lookup-key (reply-cache node) (vec-repr:bev-vec soluid)))
@@ -1941,7 +1975,7 @@ dropped on the floor.
                                   (hash-table-p interim-table))
                          (loop for reply being each hash-value of interim-table
                            when reply collect (first (args reply)))))
-         (coalescer (coalescer kind)))
+         (coalescer (coalescer pkind)))
     (edebug 5 node :COALESCE interim-data (unwrap local-data) interim-table)
     (let ((coalesced-output
            (reduce coalescer
@@ -1963,8 +1997,8 @@ dropped on the floor.
                       (let ((timeout-handler (kvs:lookup-key (timeout-handlers thisnode) (vec-repr:bev-vec soluid))))
                         (if timeout-handler ; will be nil for messages that don't expect a reply
                             (funcall timeout-handler nil)
-                            (unless (eql :k-multicast reply-kind) ;;; NDY: This is a kludge to decrease noise in the log for messages that don't expect a reply.
-                              ;;; I don't know that :k-multicast covers all cases.
+                            (unless (eql :pk-multicast reply-kind) ;;; NDY: This is a kludge to decrease noise in the log for messages that don't expect a reply.
+                              ;;; I don't know that :pk-multicast covers all cases.
                               (edebug 5 thisnode :NO-TIMEOUT-HANDLER! soluid))
                             )))
                      (t ; more repliers are expected
@@ -2404,7 +2438,7 @@ dropped on the floor.
 (save-node node *standard-output*)
 
 #+TESTING
-(setf msg (make-solicitation :kind :list-alive))
+(setf msg (make-solicitation :pkind :list-alive))
 #+TESTING
 (copy-message msg)
 
