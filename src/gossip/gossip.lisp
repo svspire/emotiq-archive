@@ -432,7 +432,8 @@ are in place between nodes.
          :documentation "The function a node that accepts this message and decides to process it will run.
          For use by application-handler. This does NOT determine how propagation happens. That's the domain of pkind.")
    (args :initarg :args :initform nil :accessor args
-         :documentation "Payload of the message. Arguments to verb. Usually a list whose first element is the ultimate intended destination nodeID.")
+         :documentation "Payload of the message. Arguments to verb (and unfortunately sometimes to pkind). ~
+Usually a list whose first element is the ultimate intended destination nodeID.")
    ))
 
 (defgeneric copy-message (msg)
@@ -1179,6 +1180,14 @@ dropped on the floor.
     (when node ; actor will always be true too
       (actor-send actor :gossip (uid node) msg))))
 
+(defun symbol-to-fn (symbol)
+  "Given a symbol in any package (including a keyword) return the equivalent symbol in the gossip
+   package if it's fboundp."
+  (when symbol 
+    (let* ((newsym (intern (symbol-name symbol) :gossip)))
+      (values (and newsym (fboundp newsym))
+              newsym))))
+
 ;;;  TODO: Might want to also check hopcount and reject message where hopcount is too large.
 ;;;        Might want to not accept maybe-sir messages at all if their soluid is expired.
 (defmethod accept-msg? ((msg gossip-message-mixin) (thisnode gossip-node) srcuid)
@@ -1195,13 +1204,12 @@ dropped on the floor.
              (cond (already-seen? ; Ignore if already seen
                     (values nil :already-seen))
                    (t ; it's a new message
-                    (let* ((pkind (pkind msg))
-                           (pkindsym nil))
+                    (let* ((pkind (pkind msg)))
                       (cond (pkind
-                             (setf pkindsym (intern (symbol-name pkind) :gossip))
-                             (if (and pkindsym (fboundp pkindsym))
-                                 pkindsym ;; SUCCESS! We accept the message.
-                                 (values nil (list :unknown-kind pkindsym))))
+                             (multiple-value-bind (funcallable? pkindsym) (symbol-to-fn pkind)
+                               (if funcallable?
+                                   pkindsym ;; SUCCESS! We accept the message.
+                                   (values nil (list :unknown-kind pkindsym)))))
                             (t
                              (values nil :no-pkind)))))))))))
 
@@ -1223,6 +1231,7 @@ dropped on the floor.
                        (t (values nil :unexpected-2)))))
               (t (values nil failure-reason))))))
 
+;;; NDY: This should probably call #'symbol-to-fn
 (defmethod accept-msg? ((msg system-async) (thisnode abstract-gossip-node) srcuid)
   (declare (ignore srcuid))
   ; system-asyncs are always accepted
@@ -1309,7 +1318,7 @@ dropped on the floor.
                      (:final-reply-accepted 4)
                      (t nil))))
     (when (show-debug-p loglevel)
-      (%edebug node logsym msg (pkind msg) :from (lookup-node srcuid) (args msg)))
+      (%edebug node logsym msg (pkind msg) :from (lookup-node srcuid) msg))
     (gossip-handler-case
      (funcall pkindsym msg node srcuid)
      (error (c) (edebug 1 node :ERROR msg c)))))
@@ -1337,7 +1346,7 @@ dropped on the floor.
                (:active-ignore ; RECEIVE an active-ignore. Whomever sent it is telling us they're ignoring us.
                 ; Which means we need to ensure we're not waiting on them to reply.
                 (if (typep msg 'interim-reply) ; should never be any other type
-                    (destructuring-bind (pkind failure-reason) (args msg)
+                    (destructuring-bind (pkind failure-reason) (args msg) ;;; NDY: This seems bogus or at least obsolete
                       (declare (ignore failure-reason)) ; should always be :already-seen, but we're not checking for now
                       (let ((was-present? (cancel-replier node pkind (solicitation-uid msg) srcuid)))
                         (when (and was-present?
@@ -1455,8 +1464,8 @@ dropped on the floor.
   (declare (ignore srcuid))
   ; srcuid will usually (always) be that of thisnode, but we're not checking for that
   ;   because it doesn't matter if it's not true. For now.
-  (let* ((soluid (first (args msg)))
-         (reply-kind (second (args msg)))
+  (let* ((soluid (first (args msg))) ;;; NDY: This seems bogus or at least obsolete
+         (reply-kind (second (args msg))) ;;; NDY: This seems bogus or at least obsolete
          (where-to-send-reply (get-upstream-source thisnode soluid)))
     (when (more-replies-expected? thisnode soluid)
       (send-interim-reply thisnode reply-kind soluid where-to-send-reply)
@@ -1474,7 +1483,7 @@ dropped on the floor.
    which can be any Lisp object. Recipient nodes are not expected to reply.
    This is probably only useful for debugging gossip protocols, since the only
    record of the announcement will be in the log."
-  (let ((content (first (args msg))))
+  (let ((content (first (args msg)))) ;;; NDY: This seems bogus or at least obsolete
     (declare (ignore content))
     ; thisnode becomes new source for forwarding purposes
     (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
@@ -1573,7 +1582,7 @@ All the above need to be turned into verb-driven application-handlers because th
    This explicitly proxifies a particular node.)*
   Every intermediate node will have the message both delivered to it and forwarded through it.
   Recipient nodes are not expected to reply."
-  (destructuring-bind (uid ipaddr ipport) (args msg)
+  (destructuring-bind (uid ipaddr ipport) (args msg) ;;; NDY: This seems bogus or at least obsolete
     (ensure-proxy-node :tcp ipaddr ipport uid)
     ; thisnode becomes new source for forwarding purposes
     (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
@@ -1753,7 +1762,7 @@ All the above need to be turned into verb-driven application-handlers because th
     ; Any time we get a final reply, we destructively coalesce its data into local reply-cache
     (kvs:relate-unique! (reply-cache thisnode)
                         (vec-repr:bev-vec soluid)
-                        (run-coalescer coalescer local-data (first (args msg))))
+                        (run-coalescer coalescer local-data (first (args msg)))) ;;; NDY: This seems bogus or at least obsolete
     (cancel-replier thisnode pkind soluid srcuid)))
 
 (defgeneric initial-reply-value (pkind thisnode msgargs)
@@ -2002,7 +2011,7 @@ All the above need to be turned into verb-driven application-handlers because th
          (interim-data (when (and interim-table
                                   (hash-table-p interim-table))
                          (loop for reply being each hash-value of interim-table
-                           when reply collect (first (args reply)))))
+                           when reply collect (first (args reply))))) ;;; NDY: This seems bogus or at least obsolete
          (coalescer (coalescer pkind)))
     (edebug 5 node :COALESCE interim-data (unwrap local-data) interim-table)
     (let ((coalesced-output

@@ -1,5 +1,6 @@
 (in-package :gossip-test)
 
+;;; NDY: Singlecast is different now: First arg is verb. Calls to #'singlecast herein might need to be changed.
 (defparameter *debug* nil
   "True if you want intermediate timings to print out and show inspector on failures")
 

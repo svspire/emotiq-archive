@@ -14,9 +14,9 @@
    the list was refreshed."
   (uber-set))
 
-(defun singlecast (message destination-uid &key graphID (howmany 2) startnodeID)
-  "High-level API for sending message to given single destination-uid. If graphID
-   is supplied, message will be forwarded along the graph, starting
+(defun singlecast (verb destination-uid &key graphID (howmany 2) startnodeID) ; Oracle API
+  "High-level API for sending verb (without arguments) to given single destination-uid. If graphID
+   is supplied, verb will be forwarded along the graph, starting
    with some locally-known node that's part of that graph.
    If graphID is not supplied, a direct connection to destination-uid will
    be attempted and used.
@@ -34,7 +34,7 @@
                                 :forward-to howmany
                                 :graphID graphID
                                 :destination-uid destination-uid
-                                :args message))
+                                :verb verb))
             (send-msg solicitation
                       startnodeID                   ; propagate to destination via gossip network
                       nil)))
@@ -46,7 +46,7 @@
                               :pkind :pk-singlecast
                               :forward-to nil
                               :destination-uid destination-uid
-                              :args message))
+                              :verb verb))
           (send-msg solicitation
                     destination-uid                   ; send directly to destination
                     nil)))))
