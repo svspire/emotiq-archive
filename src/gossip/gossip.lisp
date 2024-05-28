@@ -460,7 +460,7 @@ are in place between nodes.
    (originating-uid :initarg :originating-uid :initform nil :accessor originating-uid
                     :documentation "UID of the domain node that originated this message. This is part of this message's unique identity and
              it should never change.
-             EXCEPTION: If this value is nil it is a message that came from the Oracle. The first domain (non-temporary) node that sees
+             EXCEPTION: If this value is nil it is a message that came from the Oracle. The first domain (non-temporary) node that forwards
              a message with a null originating-uid should replace that value with the node's own UID.
              Non-nil values herein should never be changed.
              Reply-to may in some cases contain an identical value to this slot, but this slot has no connotation about replies.")
@@ -488,6 +488,8 @@ are in place between nodes.
 (defmethod copy-message :around ((msg solicitation))
   (let ((new-msg (call-next-method)))
     (setf (forward-to new-msg) (forward-to msg)
+          (originating-uid new-msg) (originating-uid msg)
+          (destination-uid new-msg) (destination-uid msg)
           (reply-to new-msg) (reply-to msg)
           (graphID new-msg)  (graphID msg))
     new-msg))
@@ -964,12 +966,14 @@ dropped on the floor.
                        (error (e) e)))
 
 ;; NOTE: "direct" here refers to the mode of reply, not the mode of sending.
-(defun solicit-direct (node pkind &rest args)
+
+;;; NDY: This needs work. See all the NDY comments herein.
+(defun solicit-direct (destination-node pkind &rest args)
   "Like solicit-wait but asks for all replies to be sent back to node directly, rather than percolated upstream.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
-  (unless node
+  (unless destination-node
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
-  (let* ((uid (as-uid node))
+  (let* ((destination-uid (as-uid destination-node))
          (mbox (mpcompat:make-mailbox))
          (new-actor (ac:make-actor (lambda (&rest msg) (apply 'actor-send mbox msg)))) ; new actor sends msg to new mbox. BUT WHEN??
          (new-actor-name (gentemp "OUTPUTTER" :gossip)))
@@ -977,14 +981,18 @@ dropped on the floor.
         (progn 
           (ac:register-actor new-actor new-actor-name)
           (let* ((solicitation (make-solicitation
-                                :reply-to uid ; tell original destination to reply to original source
+                                ;;; NDY: Set originating-uid here??
+                                ;:originating-uid destination-uid ;;; NDY: Is this right?
+                                :reply-to destination-uid ; tell original destination to reply to original source
                                 :pkind pkind
                                 :forward-to t ; neighborcast
                                 :args args))
                  (soluid (uid solicitation)))
+            ;;; NDY: I don't get this. Why are we sending a message to destination-uid that itself asks for a reply to destination-uid??
             (send-msg solicitation          ; send-msg now to original SOURCE NODE. Lie and tell it the source was the new-actor. WHY?? :REPLY-TO IS ACTUAL SOURCE.
-                      uid                   ; destination=original source
+                      destination-uid                   ; destination=original source
                       new-actor-name)       ; Reply will 'percolate' back through the new-actor, which just puts it in the new mbox we just created.
+                                            ;;; NDY: Re comment above: I thought the whole point here was _not_ to percolate??
             ;;; NDY: Why do we need the new actor here at all? Why not just make the srcid that of the new mbox? Dunno.
             ;;;  mboxes are just queues, but ac:send knows how to 'send' to an mbox.
             ; Now wait for original destination node to send response back to our new mbox
@@ -999,28 +1007,29 @@ dropped on the floor.
       (ac:unregister-actor new-actor-name))))
 
 ;;; NDY: Deprecate? Use e.g. #'broadcast instead?
-(defun solicit (node pkind &rest args)
+(defun solicit (destination-node pkind &rest args)
   "Send a solicitation to the network starting with given node. This is the primary interface to 
   the network to start an action from the outside. Nodes shouldn't use this function to initiate an
   action because they should set the srcuid parameter to be their own rather than nil."
-  (unless node
+  (unless destination-node
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
-  (let ((uid (as-uid node)))
+  (let ((destination-uid (as-uid destination-node)))
     (let* ((solicitation (make-solicitation
                           :pkind pkind
+                          ;; Don't set originating-uid here. Destination-uid node will do that when it receives this message.
                           :args args))
            (soluid (uid solicitation)))
       (send-msg solicitation
-                uid      ; destination
+                destination-uid      ; destination
                 nil)     ; srcuid
       soluid)))
 
-(defun solicit-wait (node pkind &rest args)
+(defun solicit-wait (destination-node pkind &rest args)
   "Like solicit but waits for a reply. Only works for :UPSTREAM replies.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
-  (unless node
+  (unless destination-node
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
-  (let* ((uid (as-uid node))
+  (let* ((destination-uid (as-uid destination-node))
          (mbox (mpcompat:make-mailbox))
          (actor (ac:make-actor (lambda (&rest msg) (apply 'actor-send mbox msg))))
          (actor-name (gentemp "OUTPUTTER" :gossip)))
@@ -1029,11 +1038,12 @@ dropped on the floor.
           (ac:register-actor actor actor-name)
           (let* ((solicitation (make-solicitation
                                 :reply-to :UPSTREAM
+                                ;;; NDY: Set originating-uid here??
                                 :pkind pkind
                                 :args args))
                  (soluid (uid solicitation)))
             (send-msg solicitation
-                      uid      ; destination
+                      destination-uid      ; destination
                       actor-name)     ; srcuid
             
             (multiple-value-bind (response success) (mpcompat:mailbox-read mbox (* 1.2 *max-seconds-to-wait*))
@@ -1046,22 +1056,23 @@ dropped on the floor.
                soluid))))
       (ac:unregister-actor actor-name))))
 
-(defun solicit-progress (node pkind &rest args)
+(defun solicit-progress (destination-node pkind &rest args)
   "Like solicit-wait but prints periodic progress log messages (if any)
   associated with this node to listener.
   Don't use this on messages that don't expect a reply, because it'll wait forever."
-  (unless node
+  (unless destination-node
     (error "No destination node supplied. You might need to run make-graph or restore-graph-from-file first."))
-  (let* ((uid (as-uid node))
-         (node (if (typep node 'abstract-gossip-node)
-                   node
-                   (lookup-node node)))
+  (let* ((uid (as-uid destination-node))
+         (destination-node (if (typep destination-node 'abstract-gossip-node)
+                   destination-node
+                   (lookup-node destination-node)))
          (response nil)
-         (old-logger (logfn node)))
+         (old-logger (logfn destination-node)))
     (flet ((final-continuation (message)
              (setf response message)))
       (let* ((solicitation (make-solicitation
                             :reply-to :UPSTREAM
+                            ;;; NDY: Set originating-uid here??
                             :pkind pkind
                             :args args))
              (soluid (uid solicitation)))
@@ -1077,7 +1088,7 @@ dropped on the floor.
                      (first (args (first response)))
                      (except :name :TIMEOUT))
                  soluid)))
-          (setf (logfn node) old-logger))))))
+          (setf (logfn destination-node) old-logger))))))
 
 (defun multiple-list-uids (address-port-list)
   "Get a list of all UIDs of nodes at given remote address and port in
@@ -1141,6 +1152,8 @@ dropped on the floor.
                              :message msg)))))
 
 (defmethod send-msg ((msg gossip-message-mixin) destuid srcuid)
+  "Srcuid and destuid represent the source node and destination node of this message for this hop. They are not necessarily
+   the originating-uid or destination-uid of the message!"
   (let* ((destnode (lookup-node destuid))
          (destactor (if destnode ; if destuid doesn't represent a gossip node, assume it represents something we can actor-send to
                         (actor destnode)
@@ -1276,6 +1289,7 @@ dropped on the floor.
   (let ((msg (make-interim-reply
               :solicitation-uid soluid
               :pkind :active-ignore
+              ;;; NDY: Set originating-uid here??
               :args (list pkind failure-reason))))
     (send-msg msg
               to
@@ -1300,14 +1314,14 @@ dropped on the floor.
      (funcall pkindsym msg node srcuid)
      (error (c) (edebug 1 node :ERROR msg c)))))
 
-(defmethod locally-receive-msg ((msg system-async) (node abstract-gossip-node) srcuid)
+(defmethod maybe-locally-receive-msg ((msg system-async) (node abstract-gossip-node) srcuid)
   (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
     (cond (pkindsym ; message accepted
            (locally-dispatch-msg pkindsym node msg srcuid))
           (t (when (show-debug-p 4)
                (%edebug 4 :ignore msg :from (lookup-node srcuid) failure-reason))))))
 
-(defmethod locally-receive-msg ((msg gossip-message-mixin) (node gossip-node) srcuid)
+(defmethod maybe-locally-receive-msg ((msg gossip-message-mixin) (node gossip-node) srcuid)
   "The main dispatch function for gossip messages. Runs entirely within an actor.
   First checks to see whether this message should be accepted by the node at all, and if so,
   it calls the function named in the pkind field of the message to handle it."
@@ -1348,13 +1362,15 @@ dropped on the floor.
                       (send-active-ignore srcuid (uid node) (pkind msg) soluid failure-reason)))))
                (t nil)))))))
 
-(defmethod locally-receive-msg ((msg t) (thisnode proxy-gossip-node) srcuid)
+(defmethod maybe-locally-receive-msg ((msg t) (thisnode proxy-gossip-node) srcuid)
   (declare (ignore srcuid))
   (error "Bug: Cannot locally-receive to a proxy node!"))
 
 (defun forward (msg srcuid destuids)
   "Sends msg from srcuid to multiple destuids. Returns nil if successful; error otherwise."
   (setf srcuid (as-uid srcuid))
+  (unless (originating-uid msg) ; if message came in from Oracle, make it look like it started at srcuid
+    (setf (originating-uid msg) srcuid))
   (let ((failure (reduce (lambda (x destuid)
                            (or x (send-msg msg destuid srcuid)))
                          destuids
@@ -1536,7 +1552,7 @@ All the above need to be turned into verb-driven application-handlers because th
   Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
   Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
   Destination node is not expected to reply (at least not with builtin gossip-style replies)."
-  (if (uid= (uid thisnode) (car (args msg)))
+  (if (uid= (uid thisnode) (destination-uid msg))
       (handoff-to-application-handlers thisnode msg)
       ; thisnode becomes new source for forwarding purposes
       (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
@@ -1807,6 +1823,7 @@ All the above need to be turned into verb-driven application-handlers because th
   "Return nil if successful; an error object otherwise."
   (let ((reply (make-final-reply :solicitation-uid soluid
                                  :pkind pkind
+                                 ;;; NDY: Set originating-uid here??
                                  :args (list data)))
         (where-to-send-reply (cond ((uid? destination)
                                     destination)
@@ -1864,6 +1881,7 @@ All the above need to be turned into verb-driven application-handlers because th
     (if (uid? where-to-send-reply) ; should be a uid or T. Might be nil if there's a bug.
         (let ((reply (make-interim-reply :solicitation-uid soluid
                                          :pkind reply-kind
+                                         ;;; NDY: Set originating-uid here??
                                          :args (list coalesced-data))))
           (edebug 4 thisnode :SEND-INTERIM-REPLY reply :to where-to-send-reply coalesced-data)
           (send-msg reply
@@ -2215,7 +2233,7 @@ All the above need to be turned into verb-driven application-handlers because th
   ;  modify the original without affecting other threads.
   (incf (hopcount gossip-msg))
   ; Remember the srcuid that sent me this message, because that's where reply (if any) might be forwarded to
-  (locally-receive-msg gossip-msg node srcuid))
+  (maybe-locally-receive-msg gossip-msg node srcuid))
 
 (defmethod deliver-gossip-msg ((gossip-msg system-async) (node abstract-gossip-node) srcuid)
   (setf gossip-msg (copy-message gossip-msg)) ; must copy before incrementing hopcount because we can't
@@ -2223,7 +2241,7 @@ All the above need to be turned into verb-driven application-handlers because th
   (incf (hopcount gossip-msg))
   ; Remember the srcuid that sent me this message, because that's where reply (if any) might be forwarded to
   ;  (although system-async messages never expect replies).
-  (locally-receive-msg gossip-msg node srcuid))
+  (maybe-locally-receive-msg gossip-msg node srcuid))
 
 (defun run-gossip (&optional (archive-log t))
   "Archive the current log and clear it.
@@ -2414,7 +2432,7 @@ All the above need to be turned into verb-driven application-handlers because th
 
 ;; should produce something like (:FINALREPLY "node209" "sol255" (((:BAZ :BAR) . 4))) as last *log* entry
 
-(defun get-kvs (key)
+(defun get-kvs (key) ; Oracle API
   "Shows value of key for all local nodes. Just for debugging. :gossip-lookup-key is the proper way to do this."
   (let ((nodes (listify-nodes)))
     (mapcar (lambda (node)
@@ -2458,7 +2476,7 @@ NOTE A: About proactive reply cancellation
 If node X is ignoring a solicitation* from node Y because it already
 saw that solicitation, then it must also not expect a reply from node Y
 for that same solicitation.
-Here's why [In this scenario, imagine #'locally-receive-msg is acting on behalf of node X]:
+Here's why [In this scenario, imagine #'maybe-locally-receive-msg is acting on behalf of node X]:
 If node X ignores a solicition from node Y -- because it's already seen that solicitation --
   then X knows the following:
   1. Node Y did not receive the solicition from X. It must have received it from somewhere else,

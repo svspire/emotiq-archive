@@ -14,11 +14,11 @@
    the list was refreshed."
   (uber-set))
 
-(defun singlecast (message nodeID &key graphID (howmany 2) startnodeID)
-  "High-level API for sending message to given single nodeID. If graphID
+(defun singlecast (message destination-uid &key graphID (howmany 2) startnodeID)
+  "High-level API for sending message to given single destination-uid. If graphID
    is supplied, message will be forwarded along the graph, starting
    with some locally-known node that's part of that graph.
-   If graphID is not supplied, a direct connection to nodeID will
+   If graphID is not supplied, a direct connection to destination-uid will
    be attempted and used.
    If you want to use the default graph, you must explicitly pass +default-graphid+ in graphID.
    Howmany is only used if graphID is supplied."
@@ -33,9 +33,10 @@
                                 :pkind :pk-singlecast
                                 :forward-to howmany
                                 :graphID graphID
-                                :args (cons nodeID message)))
+                                :destination-uid destination-uid
+                                :args message))
             (send-msg solicitation
-                      startnodeID                   ; destination
+                      startnodeID                   ; propagate to destination via gossip network
                       nil)))
         
         ; otherwise ensure there's a node with the given nodeID (real or proxy) and send to it directly
@@ -44,9 +45,10 @@
                               :reply-to nil
                               :pkind :pk-singlecast
                               :forward-to nil
-                              :args (cons nodeID message)))
+                              :destination-uid destination-uid
+                              :args message))
           (send-msg solicitation
-                    nodeID                   ; destination
+                    destination-uid                   ; send directly to destination
                     nil)))))
 
 (defun ensure-list (thing)

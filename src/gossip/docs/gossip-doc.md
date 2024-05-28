@@ -632,15 +632,13 @@ semantics."
 What Does a Message Look Like?
 ------------------------------
 
-The message the actors see is (:gossip srcuid \#\<gossip-message-mixin\>). It's
+The message the actors see is `(:gossip srcuid #<gossip-message-mixin>)`. It's
 just the gossip-message prepended with the UID of the source gossip-node and the
 keyword :gossip. See gossip-message-mixin...
 
-When messages are sent over the network, they are 5 pieces in a list:
+When messages are sent over the network, they are 4 pieces in a list:
 
--   destuid of ultimate receiving node
-
--   srcuid of sending node
+-   srcuid of sending node. That is, the node this message directly came from.
 
 -   remote-address (eripa) of sender
 
@@ -660,9 +658,8 @@ Summary:
 Several questions have to be asked when a message reaches a node:
 
 Should I accept this message or ignore it? Answered by \#'accept-msg? and
-whether message was specifically
-
-directed at me.
+whether message was specifically directed at me. See
+`#'maybe-locally-receive-msg`.
 
 Assuming I accept the message, do I process it locally? Determined by pkind slot
 of message.
@@ -675,7 +672,7 @@ Do I forward the message? Determined by pkind and forward-to slots of message.
  
 
 How does a gossip-node receive a message? The toplevel function is
-\#'gossip-dispatcher, which is where the receiving process begins. The actor
+`#'gossip-dispatcher`, which is where the receiving process begins. The actor
 attached to the node runs this function whenever it sees a new message on its
 queue. [[actually the dispatch function is a lambda wrapped around
 `#'gossip-dispatcher`, and for clarity that should probably be replaced by an
@@ -683,8 +680,8 @@ queue. [[actually the dispatch function is a lambda wrapped around
 
 `#'gossip-dispatcher` makes sure the first element of the message is `:gossip`,
 checks that there is indeed a gossip-node that contains this actor, extracts the
-`srcuid` which should be the second element of the original message, and calls
-`#'deliver-gossip-msg` on the third element of the original message.
+`srcuid` which should be the first element of the original message, and calls
+`#'deliver-gossip-msg` on the second element of the original message.
 
 *In other words* the message the actor sees is`(:gossip srcuid
 #<gossip-message-mixin>)`. It's just the gossip-message prepended with the UID
@@ -692,12 +689,12 @@ of the source gossip-node and the keyword :gossip.
 
 `#'deliver-gossip-msg` expects to see the true gossip-message as its first
 parameter, together with the gossip-node and srcuid. It copies the message,
-increases its hopcount, and then calls `#'locally-receive-msg`. The reason the
-message is copied is that we have to increase its hopcount before forwarding it,
-and if we did not copy it first, other nodes on this machine that are currently
-processing the message would magically see its hopcount increase. [[we should
-probably improve this to make messages in transit be a tuple of (hopcount .
-\<original-message\>) where \<original-message\> is treated as immutable. This
+increases its hopcount, and then calls `#'maybe-locally-receive-msg`. The reason
+the message is copied is that we have to increase its hopcount before forwarding
+it, and if we did not copy it first, other nodes on this machine that are
+currently processing the message would magically see its hopcount increase. [[we
+should probably improve this to make messages in transit be a tuple of (hopcount
+. \<original-message\>) where \<original-message\> is treated as immutable. This
 would reduce the consing that messages in transit now incur.]]
 
 `#'deliver-gossip-msg` also takes care of sending messages across the network in
