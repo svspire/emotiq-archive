@@ -16,12 +16,12 @@
 
 (defun singlecast (verb destination-uid &key graphID (howmany 2) startnodeID) ; Oracle API
   "High-level API for sending verb (without arguments) to given single destination-uid. If graphID
-   is supplied, verb will be forwarded along the graph, starting
-   with some locally-known node that's part of that graph.
-   If graphID is not supplied, a direct connection to destination-uid will
-   be attempted and used.
-   If you want to use the default graph, you must explicitly pass +default-graphid+ in graphID.
-   Howmany is only used if graphID is supplied."
+  is supplied, verb will be forwarded along the graph, starting
+  with some locally-known node that's part of that graph.
+  If graphID is not supplied, a direct connection to destination-uid will
+  be attempted and used.
+  If you want to use the default graph, you must explicitly pass +default-graphid+ in graphID.
+  Howmany is only used if graphID is supplied."
   (let ((solicitation nil))
     (if graphID
         (progn

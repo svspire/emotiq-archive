@@ -447,6 +447,7 @@ Usually a list whose first element is the ultimate intended destination nodeID."
                    :timestamp (timestamp msg)
                    :hopcount (hopcount msg)
                    :pkind (pkind msg)
+                   :verb (verb msg)
                    :args (args msg))))
     new-msg))
 
