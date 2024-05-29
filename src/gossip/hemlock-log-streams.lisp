@@ -15,6 +15,8 @@
 
 (export '(MAKE-LOG-WINDOW) :gui)
 
+(defvar *hemlock-log-windows* nil "List of hemlock-log-windows known to be open")
+
 #|
 ALL modifications to buffers should be done from the gui thread.
 gui::execute-in-gui or gui::queue-for-gui.
@@ -63,8 +65,8 @@ around this thing to get back that purity.
   ())
 
 (defmethod ccl::stream-write-char ((stream highlevel-hemlock-output-stream) char)
- ; (ccl::call-in-event-process
-   (ccl::queue-for-event-process
+  ; (ccl::call-in-event-process
+  (ccl::queue-for-event-process
    (lambda () (funcall (hi::old-lisp-stream-out stream) stream char))))
 
 (defmethod ccl::stream-write-string ((stream highlevel-hemlock-output-stream) string
@@ -72,7 +74,7 @@ around this thing to get back that purity.
                                      (start 0)
                                      (end (length string)))
   ;(ccl::call-in-event-process
-   (ccl::queue-for-event-process
+  (ccl::queue-for-event-process
    (lambda () (funcall (hi::old-lisp-stream-sout stream) stream string start end))))
 
 (defmethod highlevel-stream-from-window ((window hemlock-frame))
@@ -88,11 +90,24 @@ around this thing to get back that purity.
 ; (format s "Rain in spain")
 ; Now 'Rain in spain' should show up at end of second window.
 
-(defun make-log-window (&optional (title "Log"))
+(defun %make-log-window (&optional (title "Log"))
   "Makes a log window and returns an output stream to it."
  (let ((w (NEXTSTEP-FUNCTIONS:|window| (HI::HEMLOCK-VIEW-PANE (COCOA-EDIT)))))
-   (when title (NEXTSTEP-FUNCTIONS:|setTitle:| W (%MAKE-NSSTRING TITLE)))
+   (when title 
+     (ccl::queue-for-event-process
+      (lambda () (NEXTSTEP-FUNCTIONS:|setTitle:| W (%MAKE-NSSTRING TITLE)))))
    (highlevel-stream-from-window w)))
+
+(defun make-log-window (&optional (title "Log"))
+  (let ((new-log-window (%make-log-window title)))
+    (push new-log-window *hemlock-log-windows*)
+    new-log-window))
+
+(defun ensure-hemlock-log-window (&optional (title "Log"))
+  ; cache these eventually
+  (make-log-window title)
+  )
+
 
 ; (setf s (make-log-window))
 ; (format s "Foo")
