@@ -1167,12 +1167,12 @@ dropped on the floor.
                         (actor destnode)
                         destuid)))
     (when (show-debug-p 5)
-      (%edebug "send-msg" msg
-               "origin"
-               (vec-repr:bev-vec (originating-uid msg))
-               "from"
-               (lookup-node srcuid) 
-               (args msg) "to" (lookup-node destuid)))
+      (%edebug :send-msg
+               msg
+               (or (lookup-node srcuid) :oracle)
+               (lookup-node destuid)
+               :origin
+               (vec-repr:bev-vec (originating-uid msg))))
     (uiop:if-let (error (actor-send destactor
                                     :gossip ; actor-verb
                                     srcuid  ; first arg of actor-msg
@@ -1330,58 +1330,76 @@ dropped on the floor.
                      (:final-reply-accepted 4)
                      (t nil))))
     (when (show-debug-p loglevel)
-      (%edebug node logsym msg (pkind msg) :from (lookup-node srcuid) msg))
+      (%edebug
+       logsym
+       msg
+       (or (lookup-node srcuid) :oracle)
+       node
+       (pkind msg)))
     (gossip-handler-case
      (funcall pkindsym msg node srcuid)
-     (error (c) (edebug 1 node :ERROR msg c)))))
+     (error (c) (edebug 1 :ERROR msg "" node c)))))
 
 (defmethod maybe-locally-receive-msg ((msg system-async) (node abstract-gossip-node) srcuid)
   (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
     (cond (pkindsym ; message accepted
            (locally-dispatch-msg pkindsym node msg srcuid))
           (t (when (show-debug-p 4)
-               (%edebug 4 :ignore msg :from (lookup-node srcuid) failure-reason))))))
+               (%edebug
+                :ignore
+                msg
+                (or (lookup-node srcuid) :oracle)
+                node
+                failure-reason))))))
 
 (defmethod maybe-locally-receive-msg ((msg gossip-message-mixin) (node gossip-node) srcuid)
   "The main dispatch function for gossip messages. Runs entirely within an actor.
   First checks to see whether this message should be accepted by the node at all, and if so,
   it calls the function named in the pkind field of the message to handle it."
-  (let ((soluid (uid msg)))
-    (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
-      (cond (pkindsym ; message accepted
-             (memoize-message node msg srcuid)
-             (locally-dispatch-msg pkindsym node msg srcuid))
-            (t ; not accepted
-             (when (show-debug-p 4)
-               (%edebug node :ignore msg :from (lookup-node srcuid) failure-reason))
-             (case failure-reason
-               (:active-ignore ; RECEIVE an active-ignore. Whomever sent it is telling us they're ignoring us.
-                ; Which means we need to ensure we're not waiting on them to reply.
-                (if (typep msg 'interim-reply) ; should never be any other type
-                    (destructuring-bind (pkind failure-reason) (args msg) ;;; NDY: This seems bogus or at least obsolete
-                      (declare (ignore failure-reason)) ; should always be :already-seen, but we're not checking for now
-                      (let ((was-present? (cancel-replier node pkind (solicitation-uid msg) srcuid)))
-                        (when (and was-present?
-                                   (show-debug-p 4))
-                          ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
-                          (edebug 1 node :STOP-WAITING msg srcuid))))
-                    ; weird. Shouldn't ever happen.
-                    (edebug 1 node :ERROR msg :from srcuid :ACTIVE-IGNORE-WRONG-TYPE)))
-               (:already-seen ; potentially SEND an active ignore
-                (when (typep msg 'solicitation) ; following is extremely important. See note A below.
-                  ; If we're ignoring a message from node X, make sure that we are not in fact
-                  ;   waiting on X either. This is essential in the case where
-                  ;   *use-all-neighbors* = true and
-                  ;   *active-ignores* = false [:neighborcast protocol]
-                  ;   but it doesn't hurt anything in other cases.
-                  (let ((was-present? (cancel-replier node (pkind msg) soluid srcuid)))
-                    (when (and was-present?
-                               (show-debug-p 4))
-                      ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
-                      (edebug 1 node :STOP-WAITING msg srcuid))
-                    (unless (neighborcast? msg) ; not neighborcast means use active ignores. Neighborcast doesn't need them.
-                      (send-active-ignore srcuid (uid node) (pkind msg) soluid failure-reason)))))
-               (t nil)))))))
+  (flet ((stop-waiting (n)
+           (when (show-debug-p n)
+             (%edebug :STOP-WAITING msg (or (lookup-node srcuid) :oracle) node))))
+    (let ((soluid (uid msg)))
+      (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
+        (cond (pkindsym ; message accepted
+               (memoize-message node msg srcuid)
+               (locally-dispatch-msg pkindsym node msg srcuid))
+              (t ; not accepted
+               (when (show-debug-p 4)
+                 (%edebug
+                  :ignore
+                  msg
+                  (or (lookup-node srcuid) :oracle)
+                  node
+                  failure-reason))
+               (case failure-reason
+                 (:active-ignore ; RECEIVE an active-ignore. Whomever sent it is telling us they're ignoring us.
+                  ; Which means we need to ensure we're not waiting on them to reply.
+                  (if (typep msg 'interim-reply) ; should never be any other type
+                      (destructuring-bind (pkind failure-reason) (args msg) ;;; NDY: This seems bogus or at least obsolete
+                        (declare (ignore failure-reason)) ; should always be :already-seen, but we're not checking for now
+                        (let ((was-present? (cancel-replier node pkind (solicitation-uid msg) srcuid)))
+                          (when (and was-present?
+                                     (show-debug-p 4))
+                            ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
+                            (stop-waiting 1))))
+                      ; weird. Shouldn't ever happen.
+                      (edebug 1 :ERROR msg (or (lookup-node srcuid) :oracle) node :ACTIVE-IGNORE-WRONG-TYPE)))
+                 (:already-seen ; potentially SEND an active ignore
+                  (when (typep msg 'solicitation) ; following is extremely important. See note A below.
+                    ; If we're ignoring a message from node X, make sure that we are not in fact
+                    ;   waiting on X either. This is essential in the case where
+                    ;   *use-all-neighbors* = true and
+                    ;   *active-ignores* = false [:neighborcast protocol]
+                    ;   but it doesn't hurt anything in other cases.
+                    (let ((was-present? (cancel-replier node (pkind msg) soluid srcuid)))
+                      (when (and was-present?
+                                 (show-debug-p 4))
+                        ; Don't log a :STOP-WAITING message if we were never waiting for a reply from srcuid in the first place
+                        (stop-waiting 1))
+                      (unless (neighborcast? msg) ; not neighborcast means use active ignores. Neighborcast doesn't need them.
+                        (send-active-ignore srcuid (uid node) (pkind msg) soluid failure-reason)))))
+                 (t nil))))))))
 
 (defmethod maybe-locally-receive-msg ((msg t) (thisnode proxy-gossip-node) srcuid)
   (declare (ignore srcuid))
@@ -1423,15 +1441,15 @@ dropped on the floor.
       (let ((timer (kvs:lookup-key (timers node) (vec-repr:bev-vec soluid))))
         (cond (timed-out-p
                ; since timeout happened, actor infrastructure will take care of unscheduling the timeout
-               (edebug 3 node :DONE-WAITING-TIMEOUT msg (more-replies-expected? node soluid t)))
+               (edebug 3 :DONE-WAITING-TIMEOUT msg "" node (more-replies-expected? node soluid t)))
               (t ; done, but didn't time out. Everything's good. So unschedule the timeout message.
                (cond (timer
                       (ac::unschedule-timer timer) ; cancel a timer prematurely, if any.
                       ; if no timer, then this is a leaf node
-                      (edebug 3 node :DONE-WAITING-WIN msg))
+                      (edebug 3 :DONE-WAITING-WIN msg "" node))
                      (t ; note: Following log message doesn't necessarily mean anything is wrong.
                       ; If node is singly-connected to the graph, it's to be expected
-                      (edebug 1 node :NO-TIMER-FOUND msg)))))
+                      (edebug 1 :NO-TIMER-FOUND msg "" node)))))
         (coalesce&reply (reply-to msg) node pkind soluid)))))
 
 (defmethod prepare-repliers ((thisnode gossip-node) soluid downstream)
@@ -1458,7 +1476,7 @@ dropped on the floor.
            (when timeout-handler
              (funcall timeout-handler t))))
         (t ; log an error and do nothing
-         (edebug 1 thisnode :ERROR msg :from srcuid :INVALID-TIMEOUT-SOURCE))))
+         (edebug 1 :ERROR msg (or (lookup-node srcuid) :oracle) thisnode :INVALID-TIMEOUT-SOURCE))))
 
 (defmethod more-replies-expected? ((node gossip-node) soluid &optional (whichones nil))
   "Utility function. Can be called by message handlers.
@@ -1517,12 +1535,12 @@ dropped on the floor.
   "Default method"
   (or *ll-application-handler*
       (lambda (msg)
-        (edebug 7 node :LL-APPLICATION-HANDLER msg))))
+        (edebug 7 :LL-APPLICATION-HANDLER msg "" node)))) ; source is unknown. leave it blank.
 
 (defmethod application-handler ((node abstract-gossip-node))
   "Default method"
   (lambda (msg)
-    (edebug 6 node :APPLICATION-HANDLER msg)))
+    (edebug 6 :APPLICATION-HANDLER msg "" node))) ; source is unknown. leave it blank.
 
 (defun handoff-to-application-handlers (node msg)
   (let ((lowlevel-application-handler (lowlevel-application-handler node))
@@ -1530,12 +1548,12 @@ dropped on the floor.
     (when lowlevel-application-handler ; mostly for gossip's use, not the application programmer's
       (uiop:if-let (error (actor-send lowlevel-application-handler msg))
         (if *gossip-absorb-errors*
-            (edebug 1 node :ERROR error msg)
+            (edebug 1 :ERROR msg "" node error)
             (error error)))
       (when application-handler
         (uiop:if-let (error (actor-send application-handler msg))
           (if *gossip-absorb-errors*
-              (edebug 1 node :ERROR error msg)
+              (edebug 1 ERROR msg "" node error)
               (error error)))))))
 
 ; The "pk" in these names came from the 'pkind slot of messages; The "pk" distinguishes internal gossip
@@ -1865,7 +1883,7 @@ All the above need to be turned into verb-driven application-handlers because th
                                     :reply reply
                                     :soluid soluid
                                     :data data)))
-             (edebug 1 :error "No Reply Destination" e)
+             (edebug 1 :error "" "" "" "No Reply Destination" e)
              e))
           (t
            (edebug 1 srcnode :FINALREPLY soluid :TO where-to-send-reply data)
@@ -1960,7 +1978,7 @@ All the above need to be turned into verb-driven application-handlers because th
       (declare (ignore store))
       (cond ((zerop (hash-table-count interim-table))
              ; if this is the last reply, kill the whole table for this soluid and return true
-             ;; (edebug 1 node :KILL-TABLE-1 nil)
+             ;; (edebug 1 :KILL-TABLE-1 "" "" node)
              (kvs:remove-key! (repliers-expected node) (vec-repr:bev-vec soluid))
              (values t was-present?))
             (t (values nil was-present?))))))
@@ -2025,12 +2043,12 @@ All the above need to be turned into verb-driven application-handlers because th
                          (loop for reply being each hash-value of interim-table
                            when reply collect (first (args reply))))) ;;; NDY: This seems bogus or at least obsolete
          (coalescer (coalescer pkind)))
-    (edebug 5 node :COALESCE interim-data (unwrap local-data) interim-table)
+    (edebug 5 :COALESCE "" "" node interim-data (unwrap local-data) interim-table)
     (let ((coalesced-output
            (reduce coalescer
                    interim-data
                    :initial-value local-data)))
-      (edebug 5 node :COALESCED-OUTPUT (unwrap coalesced-output))
+      (edebug 5 :COALESCED-OUTPUT "" "" node (unwrap coalesced-output))
       coalesced-output)))
 
 (defun cancel-replier (thisnode reply-kind soluid srcuid)

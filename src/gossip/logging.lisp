@@ -5,11 +5,12 @@
 (defvar *archived-logs* (make-array 10 :adjustable t :fill-pointer 0) "Previous historical logs")
 (defparameter *log-filter* t "t to log all messages; nil to log none. If fn, it should be a predicate that determines whether to log given message.")
 (defparameter *log-object-extension* ".log" "File extension for object-based logs")
-(defparameter *log-string-extension* ".txt" "File extension for string-based logs")
+(defparameter *log-string-extension* ".tsv" "File extension for string-based logs")
 (defvar *debug-level* 1 "True to log debugging information while handling gossip requests. Larger values log more messages. T to log everything.
       NOTE NOTE NOTE: You cannot bind *debug-level* and expect anything useful to happen. You MUST set it globally!")
 (defparameter *friendly-logs* t "True to make string logs easier to read by using relative microsecond times and node-names when available. ~
 If you seet this to true you might also want to set *default-uid-style* to :tiny.")
+(defvar *log-headers* '("uSec" "Tag" "Message" "Source" "Destination" "Parameters") "Headers for columns in the string-based log file")
 
 (defun show-debug-p (&optional (level nil level-supplied-p))
   ; Writing this is a very explicit and unclever style to make it extremely clear what's going on
@@ -31,6 +32,7 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
 
 ; Logcmd: Keyword that describes what a node has done with a given message UID
 ; Examples: :IGNORE, :ACCEPT, :FORWARD, etc.
+;;; DEPRECATE. Doesn't obey *log-headers*
 (defmethod node-log ((node abstract-gossip-node) logcmd msg &rest args)
   "Log a message-based event that occurred to a node."
   (when (logfn node)
@@ -43,12 +45,14 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
 (defun %edebug (tag &rest args)
   "Sometimes we need to call this directly e.g. when the caller must check show-debug-p manually
    because it's costly to construct the args"
+  ;; Note: When using this, obey the column order in *log-headers*
   (typecase tag 
-    (abstract-gossip-node (apply 'node-log tag args))
+    (abstract-gossip-node (apply 'node-log tag args)) ;;; DEPRECATE. Doesn't obey *log-headers*
     (t (apply 'log-event tag args))))
 
 (defun edebug (level tag &rest args)
   "Syntactic sugar for wrapping show-debug-p around a log-event call"
+  ;; Note: When using this, obey the column order in *log-headers*
   (when (show-debug-p level)
     (apply '%edebug tag args)))
 
@@ -135,13 +139,19 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
     (loenc:serialize logvector stream)))
 
 (defun write-log-entry-as-string (msg stream earliest-log-time)
-  "Writes a list of objects (msg) as a string to stream"
+  "Writes a list of objects (msg) as a string to stream in TSV (tab-separated values) format"
   ;; Some of our streams have a lot of overhead on each write, so we pre-convert
   ;;   msg to a string. See Note F.
   (let ((timestamp (if (integerp earliest-log-time)
                        (- (car msg) earliest-log-time)
-                       (car msg))))
-  (write-string (format nil "~S ~{~S~^ ~}~%" timestamp (cdr msg)) stream)))
+                       (car msg)))
+        (format-control (concatenate 'string ; the lengths one has to go to to insert a literal #\Tab in a format control
+                                     "~S"
+                                     (string #\Tab)
+                                     "~{~S~^"
+                                     (string #\Tab)
+                                     "~}~%")))
+  (write-string (format nil format-control timestamp (cdr msg)) stream)))
 
   ;; FORMAT NIL here is maybe OK, this is being run in a multiprocesing environment, but,
   ;; even if FORMAT is swapped out, WRITE-STRING cannot run until it has all of its args
@@ -156,8 +166,9 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
   ;; can happen once in a while (which makes errors so much harder to debug).
 
 (defun stringify-log (logvector path)
-  "Saves logvector to a file. Moderately thread-safe if copy-first is true.
-  Not thread-safe at all otherwise."
+  "Saves logvector to a file in TSV (tab-separated values) format for easy import into a spreadsheet.
+   Moderately thread-safe if copy-first is true.
+   Not thread-safe at all otherwise."
   (ensure-directories-exist path)
   (with-open-file (stream path :direction :output)
     ;(format *standard-output* "Serializing log to ~a" path)
@@ -166,6 +177,11 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
     (let ((earliest-log-time (if *friendly-logs*
                                  (car (aref logvector 0))
                                  nil)))
+      (format stream (concatenate 'string ; the lengths one has to go to to insert a literal #\Tab in a format control
+                                  "~{~A~^"
+                                  (string #\Tab)
+                                  "~}~%")
+              *log-headers*)
       (loop for msg across logvector do
         (write-log-entry-as-string msg stream earliest-log-time)))))
 
@@ -187,7 +203,7 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
     (multiple-value-bind (path-for-objects path-for-strings)  (emotiq-log-paths newlog)
       (unless text-only
         (serialize-log newlog path-for-objects))
-      (stringify-log newlog path-for-strings)
+      (stringify-log newlog path-for-strings) ; write log to TSV format file
       (values path-for-objects
               path-for-strings))))
 
