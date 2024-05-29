@@ -124,7 +124,7 @@ THE SOFTWARE.
 ;; ---------------------------------------------------------
 ;; UB8V - the top abstract class of objects which represent
 ;; UB8-VECTORs. Declare a single slot to hold the data. Object of
-;; these classes are intended to be immuatable.  All subclasses share
+;; these classes are intended to be immutable.  All subclasses share
 ;; this same slot.
 
 (defclass ub8v ()
@@ -149,13 +149,15 @@ THE SOFTWARE.
 (defmethod print-object ((obj ub8v) out-stream)
   (if *print-readably*
       (with-standard-io-syntax
-        (princ "#." out-stream)
+          (princ "#." out-stream)
         (prin1 `(,(class-name (class-of obj)) (hex ,(hex-str (hex obj))))
                out-stream))
-    ;; else
-    (print-unreadable-object (obj out-stream :type t)
-      (princ (short-str (ub8v-vec obj)) out-stream))
-    ))
+      ;; else
+      (if *print-pretty*
+          (princ (short-str (ub8v-vec obj)) out-stream)
+          (print-unreadable-object (obj out-stream :type t)
+            (princ (short-str (ub8v-vec obj)) out-stream))
+          )))
 
 (defmethod print-object ((obj ub8v-repr) out-stream)
   ;; subclasses of UB8V-REPR mixin should feel free to override this

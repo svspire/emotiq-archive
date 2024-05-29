@@ -436,6 +436,12 @@ are in place between nodes.
 Usually a list whose first element is the ultimate intended destination nodeID.")
    ))
 
+(defmethod print-object ((thing gossip-message-mixin) stream)
+   (with-slots (uid) thing
+       (print-unreadable-object (thing stream :type t :identity nil)
+          (when uid
+              (format stream "~S ~S" (vec-repr:bev-vec uid) (verb thing))))))
+
 (defgeneric copy-message (msg)
   (:documentation "Copies a message object verbatim. Mainly for simulation mode
           where messages are shared, in which case in order to increase hopcount,
@@ -1161,7 +1167,12 @@ dropped on the floor.
                         (actor destnode)
                         destuid)))
     (when (show-debug-p 5)
-      (%edebug "send-msg" msg (lookup-node srcuid) "to" (lookup-node destuid)))
+      (%edebug "send-msg" msg
+               "origin"
+               (vec-repr:bev-vec (originating-uid msg))
+               "from"
+               (lookup-node srcuid) 
+               (args msg) "to" (lookup-node destuid)))
     (uiop:if-let (error (actor-send destactor
                                     :gossip ; actor-verb
                                     srcuid  ; first arg of actor-msg
