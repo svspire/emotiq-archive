@@ -560,6 +560,17 @@ Usually a list whose first element is the ultimate intended destination nodeID."
       (error "No solicitation-uid on timeout"))
     msg))
 
+(defun make-wakeup-msg (verb &rest args)
+  "Make a general wakeup message that's not necessarily associated with some kind of reply. Set the
+   verb of the message so this will be automatically handled by the node's application-handler."
+  (let ((msg (apply 'make-instance 'system-async
+                    :verb verb
+                    args)))
+    (when (and (eql :timeout (pkind msg))
+               (null (solicitation-uid msg)))
+      (error "No solicitation-uid on timeout"))
+    msg))
+
 (defmethod copy-message :around ((msg reply))
   (let ((new-msg (call-next-method)))
     (setf (solicitation-uid new-msg) (solicitation-uid msg))
@@ -1417,7 +1428,15 @@ dropped on the floor.
     failure))
 
 (defun send-gossip-timeout-message (actor soluid)
-  "Send a gossip-timeout message to an actor. (We're not using the actors' native timeout mechanisms at this time.)"
+  "Send a gossip-timeout message to a gossip-node."
+  (actor-send actor
+           :gossip
+           'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
+           (make-system-async :solicitation-uid soluid
+                         :pkind :timeout)))
+
+(defun send-gossip-wakeup-message (actor soluid)
+  "Send a wakeup message to a gossip-node."
   (actor-send actor
            :gossip
            'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
@@ -1431,6 +1450,18 @@ dropped on the floor.
     (let ((timer (ac::make-timer
                   'send-gossip-timeout-message actor soluid)))
       (ac::schedule-timer-relative timer (ceiling delta)) ; delta MUST be an integer number of seconds here
+      timer)))
+
+(defun schedule-periodic-wakeup (delta actor)
+  (when delta
+    (let ((timer (ac::make-timer ; this timer actor will call
+                  'send-gossip-wakeup-message ; this function
+                  actor ; with these parameters
+                  soluid)))
+      (ac::schedule-timer-relative
+       timer
+       (ceiling delta)  ; delta MUST be an integer number of seconds here
+       (ceiling delta)) ; specify delta a second time to make it periodic
       timer)))
 
 (defmethod make-timeout-handler ((node gossip-node) (msg solicitation) #-LISPWORKS (pkind keyword) #+LISPWORKS (pkind symbol))

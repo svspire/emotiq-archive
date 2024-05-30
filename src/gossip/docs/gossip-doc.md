@@ -470,10 +470,39 @@ message locally somehow before forwarding it. Allowed values:
 Replies
 -------
 
-[[I don't remember how replies work and I don't need them at present. Document
-them later.]]
+gossip-nodes have four slots: repliers-expected, reply-cache, timers and
+timeout-handlers. All are key-value-stores. These slots exist for the sole
+purpose of handling replies to solicitations that require replies.
+
+\#'make-timeout-handler builds a lambda function of one argument: timed-out-p.
+Said lambda function is typically a cleanup function that is added to the
+timeout-handlers slot of a node that expects a reply within x seconds. The
+handler is keyed on the solicitation-uid of the original message that needs to
+be replied to. By default, this lambda function checks its timed-out-p argument
+and if that's true, it merely prints a message to the log. No other cleanup is
+needed in this case because -- since the timeout is a one-shot -- the actor
+infrastructure will take care of unscheduling it.
+
+Things are a bit more complicated if a reply comes in *before* the timeout
+expires. In that case we have to tell the actor infrastructure to unschedule the
+timer that's associated with this reply. Timers are themselves actors and we
+store them in the key-value-store in the timers slot of the node, and also key
+them on the solicitation-uid of the original message just like the
+timeout-handlers.
+
+In both cases -- timed-out-p is true or not -- \#'coalesce&reply is called and
+that removes the timer and the handler from the node. (It also removes the
+appropriate entries from the repliers-expected and reply-cache slots.)
+
+\#'schedule-gossip-timeout returns a timer actor that should be stored in the
+timers slot of the node.
+
+All the above seems overly complicated and janky to me. It could probably be
+cleaned up by using appropriate continuations, or at least lexical closures.
 
  
+
+\----
 
 All the above kinds occur as both keywords in the 'kind slot of messages, and as
 functions or methods in their own right. **Those functions and methods decide
