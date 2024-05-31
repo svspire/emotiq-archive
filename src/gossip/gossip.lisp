@@ -1591,7 +1591,10 @@ dropped on the floor.
   (:documentation "Returns something that actor-send can send to, which is associated with node.
     This is used by gossip to forward an application message to its local application destination
     once it reaches its destination node.
-    Function should accept 1 arg: the message."))
+    Function should accept 1 arg: the message.
+    Do NOT do forwarding in the application-handler. Forwarding is done by the pkind handler.
+    It is acceptable to send out a brand new message in the application-handler using the #'forward function,
+    but don't forward incoming messages."))
 
 (defmethod lowlevel-application-handler ((node abstract-gossip-node))
   "Default method"
