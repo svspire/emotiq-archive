@@ -562,14 +562,10 @@ Usually a list whose first element is the ultimate intended destination nodeID."
 
 (defun make-wakeup-msg (verb &rest args)
   "Make a general wakeup message that's not necessarily associated with some kind of reply. Set the
-   verb of the message so this will be automatically handled by the node's application-handler."
-  (let ((msg (apply 'make-instance 'system-async
-                    :verb verb
-                    args)))
-    (when (and (eql :timeout (pkind msg))
-               (null (solicitation-uid msg)))
-      (error "No solicitation-uid on timeout"))
-    msg))
+  verb of the message so it will be automatically handled by the node's application-handler."
+  (apply 'make-instance 'system-async
+         :verb verb
+         args))
 
 (defmethod copy-message :around ((msg reply))
   (let ((new-msg (call-next-method)))
@@ -598,11 +594,23 @@ Usually a list whose first element is the ultimate intended destination nodeID."
   ((actor :initarg :actor :initform nil :accessor actor
           :documentation "Actor for this node")))
 
+;;; NDY: Replace all these hash-table caches with weak hash-tables. See Note J.
 (defclass gossip-node (abstract-gossip-node actor-mixin)
   ((message-cache :initarg :message-cache :initform (make-uid-mapper) :accessor message-cache
                   :documentation "Cache of seen messages. Table mapping UID of message to UID of upstream sender.
           Used to ensure identical messages are not acted on twice, and to determine where
           replies to a message should be sent in case of :UPSTREAM messages.")
+   (message-timecache :initarg :message-timecache :initform nil :accessor message-timecache
+                      :documentation "key-value store mapping node UIDs to microsecond timestamp of last
+          time this node heard from them in any capacity. Used for detecting when a node might have died.
+          For every message this node sees, it should place one entry in this table for the source node
+          of the message and one for the originating-uid of the message if the latter is known.
+          We could almost use the message-cache for this purpose (although it would require an O[n] search)
+          but that doesn't keep track of source nodes of the messages; it only keeps the messages themselves
+          which contain originating-uid but not the source node via which the message arrived here.
+          NOTE: We will keep an entry for MY OWN UID in here also, the meaning of which is that this is
+          the last time THIS NODE sent any kind of message. Useful when deciding that THIS NODE ITSELF might
+          be perceived as having died if it doesn't send a message every so often.")
    (repliers-expected :initarg :repliers-expected :initform (kvs:make-store ':hashtable :test 'equalp)
                       :accessor repliers-expected
                       :documentation "2-level Hash-table mapping a solicitation id to another hashtable of srcuids
@@ -631,6 +639,7 @@ Usually a list whose first element is the ultimate intended destination nodeID."
 (defmethod clear-caches ((node gossip-node))
   "Caches should be cleared in the normal course of events, but this can be used to make sure."
   (kvs:clear-store! (message-cache node))
+  (kvs:clear-store! (message-timecache node))
   (kvs:clear-store! (repliers-expected node))
   (kvs:clear-store! (reply-cache node))
   ; don't clear the local-kvs. That should be persistent.
@@ -1435,14 +1444,16 @@ dropped on the floor.
            (make-system-async :solicitation-uid soluid
                          :pkind :timeout)))
 
-(defun send-gossip-wakeup-message (actor soluid)
+(defun send-gossip-wakeup-message (actor verb &rest args)
   "Send a wakeup message to a gossip-node."
   (actor-send actor
-           :gossip
-           'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
-           (make-system-async :solicitation-uid soluid
-                         :pkind :timeout)))
+              :gossip
+              'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
+              (apply 'make-wakeup-msg verb
+                               :pkind :wakeup
+                               :args args)))
 
+;; For historical reasons this is only used for handling reply timeouts. Use #'schedule-periodic-wakeup for general periodic wakeups.
 (defun schedule-gossip-timeout (delta actor soluid)
   "Call this to schedule a timeout message to be sent to an actor after delta seconds from now.
    Keep the returned value in case you need to call ac::unschedule-timer before it officially times out."
@@ -1452,12 +1463,17 @@ dropped on the floor.
       (ac::schedule-timer-relative timer (ceiling delta)) ; delta MUST be an integer number of seconds here
       timer)))
 
-(defun schedule-periodic-wakeup (delta actor)
+(defun schedule-periodic-wakeup (delta actor verb &rest args)
+  "For implementing background loops inside a gossip node. Causes the ac::*master-timer* to periodically
+   send the node a message of class system-async, pkind=:wakeup, verb=<whatever>.
+   You only need to call this once to schedule a periodic wakeup.
+   To cancel, call ac::unschedule-timer on the timer that this function returns."
   (when delta
-    (let ((timer (ac::make-timer ; this timer actor will call
+    (let ((timer (apply 'ac::make-timer ; this timer actor will call
                   'send-gossip-wakeup-message ; this function
                   actor ; with these parameters
-                  soluid)))
+                  verb
+                  args)))
       (ac::schedule-timer-relative
        timer
        (ceiling delta)  ; delta MUST be an integer number of seconds here
@@ -1499,13 +1515,28 @@ dropped on the floor.
 ;;; These never expect a reply but they can happen for methods that did expect one.
 (defmethod timeout ((msg system-async) thisnode srcuid)
   "Timeouts are a special pkind of message in the gossip protocol,
-  and they're typically sent by a special timer thread."
+  and they're typically sent by a special timer thread.
+  For historical reasons these are only used for timeouts from expected replies.
+  Use #'wakeup for more general timeouts."
   (cond ((eq srcuid 'ac::*master-timer*)
-         ;;(edebug 1 thisnode :timing-out msg :from srcuid (solicitation-uid msg))
+         (edebug 1 :timeout msg srcuid thisnode (solicitation-uid msg))
          (let* ((soluid (solicitation-uid msg))
                 (timeout-handler (kvs:lookup-key (timeout-handlers thisnode) (vec-repr:bev-vec soluid))))
            (when timeout-handler
              (funcall timeout-handler t))))
+        (t ; log an error and do nothing
+         (edebug 1 :ERROR msg (or (lookup-node srcuid) :oracle) thisnode :INVALID-TIMEOUT-SOURCE))))
+
+(defmethod wakeup ((msg system-async) thisnode srcuid)
+  "Wakeups are a special pkind of message in the gossip protocol,
+  and they're typically sent by a special timer thread.
+  These are used for any kind of automatic wakeup message sent by the special timer thread.
+  Typically these would be set up to be periodic wakeups by the actor infrastructure, but they
+  don't have to be.
+  These can be used for wakeups/timeouts that don't have anything to do with replies."
+  (cond ((eq srcuid 'ac::*master-timer*)
+         (edebug 1 :wakeup msg srcuid thisnode (verb msg) (args msg))
+         (handoff-to-application-handlers thisnode msg srcuid)) ; specialize application-handler for whatever's in the verb of this message
         (t ; log an error and do nothing
          (edebug 1 :ERROR msg (or (lookup-node srcuid) :oracle) thisnode :INVALID-TIMEOUT-SOURCE))))
 
@@ -1565,24 +1596,45 @@ dropped on the floor.
 (defmethod lowlevel-application-handler ((node abstract-gossip-node))
   "Default method"
   (or *ll-application-handler*
-      (lambda (msg)
+      (lambda (msg srcuid)
+        (let ((now (usec::get-universal-time-usec)))
+          ; note the message's srcuid and originating-uid in my message-timecache
+          (when srcuid (kvs:relate-unique! (message-timecache node) srcuid now))
+          (when (originating-uid msg) (kvs:relate-unique! (message-timecache node) (originating-uid msg) now)))
         (edebug 7 :LL-APPLICATION-HANDLER msg "" node)))) ; source is unknown. leave it blank.
 
 (defmethod application-handler ((node abstract-gossip-node))
-  "Default method"
+  "General application-handler. If msg contains a verb symbol that's fboundp in the :gossip package,
+  call it with the message's args. Otherwise do nothing.
+  Generally such verbs are named with a prefix of 'verb-' to make it easy to find their corresponding
+  method definitions."
   (lambda (msg)
-    (edebug 6 :APPLICATION-HANDLER msg "" node))) ; source is unknown. leave it blank.
+    (edebug 4
+            :APPLICATION-HANDLER
+            msg
+            "" ; by the time we're this deep we don't know the srcid, so leave it blank
+            node
+            (verb msg)
+            (args msg)) ; leave source blank
+    (let* ((verb (verb msg)))
+      (cond (verb
+             (multiple-value-bind (funcallable? verbsym) (symbol-to-fn verb)
+               (if funcallable?
+                   (funcall verbsym node msg)
+                   (edebug 4 :unknown-verb msg "" node verb))))
+            (t ; A harmless common case. pkind might have already taken care of everything that needed to be done
+             (edebug 5 :no-verb msg "" node))))))
 
-(defun handoff-to-application-handlers (node msg)
+(defun handoff-to-application-handlers (node msg srcuid)
   (let ((lowlevel-application-handler (lowlevel-application-handler node))
         (application-handler (application-handler node)))
     (when lowlevel-application-handler ; mostly for gossip's use, not the application programmer's
-      (uiop:if-let (error (actor-send lowlevel-application-handler msg))
+      (uiop:if-let (error (actor-send lowlevel-application-handler msg srcuid))
         (if *gossip-absorb-errors*
             (edebug 1 :ERROR msg "" node error)
             (error error)))
       (when application-handler
-        (uiop:if-let (error (actor-send application-handler msg))
+        (uiop:if-let (error (actor-send application-handler msg)) ; not currently passing srcuid to application-handler. Could change this if it becomes necessary.
           (if *gossip-absorb-errors*
               (edebug 1 ERROR msg "" node error)
               (error error)))))))
@@ -1623,7 +1675,7 @@ All the above need to be turned into verb-driven application-handlers because th
   Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
   Destination node is not expected to reply (at least not with builtin gossip-style replies)."
   (if (uid= (uid thisnode) (destination-uid msg))
-      (handoff-to-application-handlers thisnode msg)
+      (handoff-to-application-handlers thisnode msg srcuid)
       ; thisnode becomes new source for forwarding purposes
       (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
 
@@ -1632,7 +1684,7 @@ All the above need to be turned into verb-driven application-handlers because th
   Every intermediate node will have the message
   both delivered to it AND forwarded through it.
   Recipient nodes are not expected to reply (at least not with builtin gossip-style replies)."
-  (handoff-to-application-handlers thisnode msg)
+  (handoff-to-application-handlers thisnode msg srcuid)
    ; thisnode becomes new source for forwarding purposes
   (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg))))
 
@@ -2668,6 +2720,16 @@ remote-port of sender
 gossip-msg
 
 NOTE H: The uber-network, the uber-set and +default-graphid+
+
+NOTE J: All the caches in nodes (and perhaps elsewhere) that are hashtables need to be replaced by some kind
+of a combination of a hashtable and a circular queue. Everything added to the hashtable also gets placed in
+the circular queue.
+This accomplishes two things:
+1. Because the queue is a queue, it makes it easy to look back at the entries in order from most recent to least.
+2. Because the queue is of limited length, it will protect the last n entries from garbage collection if we
+make the hashtables weak.
+
+
 
 TODO:
 Ensure that anonymous nodes can never be in a neighborhood.
