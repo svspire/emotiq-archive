@@ -436,6 +436,9 @@ are in place between nodes.
 Usually a list whose first element is the ultimate intended destination nodeID.")
    ))
 
+(defmethod originating-uid ((msg gossip-message-mixin))
+  nil)
+
 (defmethod print-object ((thing gossip-message-mixin) stream)
    (with-slots (uid) thing
        (print-unreadable-object (thing stream :type t :identity nil)
@@ -743,6 +746,17 @@ Usually a list whose first element is the ultimate intended destination nodeID."
       (:gossip
        (unless node (error "No node attached to this actor!"))
        (destructuring-bind (srcuid gossip-msg) (cdr actor-msg)
+         (let ((now (usec::get-universal-time-usec)))
+           ; note the message's srcuid and originating-uid (if known) in node's message-timecache
+           (unless (temporary-p node) ; temporary nodes don't keep track of aliveness
+             (when (and srcuid        ; and we don't keep track of the aliveness of temporary nodes
+                        (not (eql 'ac::*master-timer* srcuid)) ; and we don't keep track of the aliveness of the master-timer, because that's an infrastructure actor
+                        (let ((srcnode (lookup-node srcuid)))
+                          (and srcnode
+                               (not (temporary-p srcnode)))))
+               (kvs:relate-unique! (message-timecache node) srcuid now))
+             ; Following assumes originating-uids are never of temporary nodes
+             (when (originating-uid gossip-msg) (kvs:relate-unique! (message-timecache node) (originating-uid gossip-msg) now))))
          (deliver-gossip-msg gossip-msg node srcuid))))))
 
 (defmethod make-gossip-actor ((node t))
@@ -1185,7 +1199,8 @@ dropped on the floor.
   (let* ((destnode (lookup-node destuid))
          (destactor (if destnode ; if destuid doesn't represent a gossip node, assume it represents something we can actor-send to
                         (actor destnode)
-                        destuid)))
+                        destuid))
+         (srcnode (lookup-node srcuid)))
     (when (show-debug-p 5)
       (%edebug :send-msg
                msg
@@ -1193,13 +1208,16 @@ dropped on the floor.
                (lookup-node destuid)
                :origin
                (vec-repr:bev-vec (originating-uid msg))))
-    (uiop:if-let (error (actor-send destactor
+    (let ((error (actor-send destactor
                                     :gossip ; actor-verb
                                     srcuid  ; first arg of actor-msg
-                                    msg))
-      (progn
-        (edebug 5 :warn error destuid msg :from srcuid)
-        error))))
+                                    msg)))
+      (if error
+          (progn
+            (edebug 5 :warn error destuid msg :from srcuid)
+            error)
+          (when srcnode ; take note of the last time the source node successfully sent a message, in the source node's message-timecache table
+            (kvs:relate-unique! (message-timecache srcnode) srcuid (usec::get-universal-time-usec)))))))
 
 (defun current-node ()
   (uiop:if-let (actor (ac:current-actor))
@@ -1449,9 +1467,10 @@ dropped on the floor.
   (actor-send actor
               :gossip
               'ac::*master-timer* ; source of timeout messages is always *master-timer* thread
-              (apply 'make-wakeup-msg verb
-                               :pkind :wakeup
-                               :args args)))
+              (apply 'make-wakeup-msg
+                     verb
+                     :pkind :wakeup
+                     args)))
 
 ;; For historical reasons this is only used for handling reply timeouts. Use #'schedule-periodic-wakeup for general periodic wakeups.
 (defun schedule-gossip-timeout (delta actor soluid)
@@ -1600,11 +1619,7 @@ dropped on the floor.
   "Default method"
   (or *ll-application-handler*
       (lambda (msg srcuid)
-        (let ((now (usec::get-universal-time-usec)))
-          ; note the message's srcuid and originating-uid in my message-timecache
-          (when srcuid (kvs:relate-unique! (message-timecache node) srcuid now))
-          (when (originating-uid msg) (kvs:relate-unique! (message-timecache node) (originating-uid msg) now)))
-        (edebug 7 :LL-APPLICATION-HANDLER msg "" node)))) ; source is unknown. leave it blank.
+        (edebug 7 :LL-APPLICATION-HANDLER msg srcuid node))))
 
 (defmethod application-handler ((node abstract-gossip-node))
   "General application-handler. If msg contains a verb symbol that's fboundp in the :gossip package,
