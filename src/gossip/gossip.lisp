@@ -1195,7 +1195,7 @@ dropped on the floor.
 
 (defmethod send-msg ((msg gossip-message-mixin) destuid srcuid)
   "Srcuid and destuid represent the source node and destination node of this message for this hop. They are not necessarily
-   the originating-uid or destination-uid of the message!"
+  the originating-uid or destination-uid of the message!"
   (let* ((destnode (lookup-node destuid))
          (destactor (if destnode ; if destuid doesn't represent a gossip node, assume it represents something we can actor-send to
                         (actor destnode)
@@ -1209,15 +1209,18 @@ dropped on the floor.
                :origin
                (vec-repr:bev-vec (originating-uid msg))))
     (let ((error (actor-send destactor
-                                    :gossip ; actor-verb
-                                    srcuid  ; first arg of actor-msg
-                                    msg)))
+                             :gossip ; actor-verb
+                             srcuid  ; first arg of actor-msg
+                             msg)))
       (if error
           (progn
             (edebug 5 :warn error destuid msg :from srcuid)
             error)
-          (when srcnode ; take note of the last time the source node successfully sent a message, in the source node's message-timecache table
-            (kvs:relate-unique! (message-timecache srcnode) srcuid (usec::get-universal-time-usec)))))))
+          (progn
+            (when srcnode ; take note of the last time the source node successfully sent a message, in the source node's message-timecache table
+              (kvs:relate-unique! (message-timecache srcnode) srcuid (usec::get-universal-time-usec)))
+            nil ; maintain send-msg semantics
+            )))))
 
 (defun current-node ()
   (uiop:if-let (actor (ac:current-actor))
