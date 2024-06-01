@@ -10,7 +10,7 @@
       NOTE NOTE NOTE: You cannot bind *debug-level* and expect anything useful to happen. You MUST set it globally!")
 (defparameter *friendly-logs* t "True to make string logs easier to read by using relative microsecond times and node-names when available. ~
 If you seet this to true you might also want to set *default-uid-style* to :tiny.")
-(defvar *log-headers* '("uSec" "Tag" "Message" "Source" "Destination" "Parameters") "Headers for columns in the string-based log file")
+(defvar *log-headers* '("uSec" "Delta mSec" "Tag" "Message" "Source" "Destination" "Parameters") "Headers for columns in the string-based log file")
 
 (defun show-debug-p (&optional (level nil level-supplied-p))
   ; Writing this is a very explicit and unclever style to make it extremely clear what's going on
@@ -138,20 +138,26 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
     ;; run in a multiprocessing environment (Actors or no Actors)
     (loenc:serialize logvector stream)))
 
-(defun write-log-entry-as-string (msg stream earliest-log-time)
+(defun write-log-entry-as-string (msg stream earliest-log-time previous-timestamp)
   "Writes a list of objects (msg) as a string to stream in TSV (tab-separated values) format"
   ;; Some of our streams have a lot of overhead on each write, so we pre-convert
   ;;   msg to a string. See Note F.
-  (let ((timestamp (if (integerp earliest-log-time)
-                       (- (car msg) earliest-log-time)
-                       (car msg)))
-        (format-control (concatenate 'string ; the lengths one has to go to to insert a literal #\Tab in a format control
-                                     "~S"
-                                     (string #\Tab)
-                                     "~{~S~^"
-                                     (string #\Tab)
-                                     "~}~%")))
-  (write-string (format nil format-control timestamp (cdr msg)) stream)))
+  (let* ((timestamp (if (integerp earliest-log-time)
+                        (- (car msg) earliest-log-time)
+                        (car msg)))
+         (delta-ms (if (integerp previous-timestamp)
+                       (float (/ (- timestamp previous-timestamp) 1000))
+                       ""))
+         (format-control (concatenate 'string ; the lengths one has to go to to insert a literal #\Tab in a format control
+                                      "~D"
+                                      (string #\Tab)
+                                      "~S"
+                                      (string #\Tab)
+                                      "~{~S~^"
+                                      (string #\Tab)
+                                      "~}~%")))
+    (write-string (format nil format-control timestamp delta-ms (cdr msg)) stream)
+    timestamp))
 
   ;; FORMAT NIL here is maybe OK, this is being run in a multiprocesing environment, but,
   ;; even if FORMAT is swapped out, WRITE-STRING cannot run until it has all of its args
@@ -167,8 +173,8 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
 
 (defun stringify-log (logvector path)
   "Saves logvector to a file in TSV (tab-separated values) format for easy import into a spreadsheet.
-   Moderately thread-safe if copy-first is true.
-   Not thread-safe at all otherwise."
+  Moderately thread-safe if copy-first is true.
+  Not thread-safe at all otherwise."
   (ensure-directories-exist path)
   (with-open-file (stream path :direction :output)
     ;(format *standard-output* "Serializing log to ~a" path)
@@ -182,8 +188,9 @@ If you seet this to true you might also want to set *default-uid-style* to :tiny
                                   (string #\Tab)
                                   "~}~%")
               *log-headers*)
-      (loop for msg across logvector do
-        (write-log-entry-as-string msg stream earliest-log-time)))))
+      (let ((this-timestamp nil))
+        (loop for msg across logvector do
+          (setf this-timestamp (write-log-entry-as-string msg stream earliest-log-time this-timestamp)))))))
 
 (defun deserialize-log (path)
   "Deserialize object-based log file at path"

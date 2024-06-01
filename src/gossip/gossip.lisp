@@ -1290,7 +1290,7 @@ dropped on the floor.
   ; system-asyncs are always accepted
   (intern (symbol-name (pkind msg)) :gossip))
 
-;;; TODO: Remove old entries in message-cache, eventually.
+;;; TODO: Remove old entries in message-cache, eventually. See Note J.
 (defmethod memoize-message ((node gossip-node) (msg gossip-message-mixin) srcuid)
   "Record the fact that this node has seen this particular message.
   In cases of solicitation messages, we also care about the upstream sender, so
