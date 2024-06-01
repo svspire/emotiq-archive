@@ -2464,6 +2464,15 @@ All the above need to be turned into verb-driven application-handlers because th
       (if (= gossip-port *actual-tcp-gossip-port*)
           (1+ gossip-port)
           gossip-port))))
+
+(defun after-do (delta thunk)
+  "Run thunk after delta seconds. Use this within gossip nodes rather
+   than calling #'sleep if delta can be expressed as a whole number of seconds.
+   Thunk should be a lexical closure that can be used
+   as a poor-man's continuation."
+  (let ((timer (ac::make-timer
+                thunk)))
+    (ac::schedule-timer-relative timer (ceiling delta))))
     
 ; UDP TESTS
 ; Test 1
