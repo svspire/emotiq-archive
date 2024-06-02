@@ -3,7 +3,7 @@
 
 (in-package :gossip)
 
-(defparameter *gossip-absorb-errors* t "True for normal use; nil for debugging")
+(defparameter *gossip-absorb-errors* nil "True for normal use; nil for debugging")
 
 (defmacro gossip-handler-case (form &rest clauses)
   "Use this when you're tempted to use handler-case.

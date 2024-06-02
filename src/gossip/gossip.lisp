@@ -1331,20 +1331,21 @@ dropped on the floor.
 
 (defun use-some-neighbors (neighbors howmany)
   "Pick a few random neighbors based on value of howmany"
-  (when neighbors
-    (let ((len (length neighbors)))
-      (cond ((integerp howmany)
-             (if (< howmany 1)
-                 nil ; if zero or less, return nil. Degenerate case.
-                 (if (>= howmany len)
-                     neighbors ; just use them all
-                     (let ((fn (make-random-generator neighbors)))
-                       (loop for i below howmany collect
-                         (funcall fn))))))
-            (howmany ; if true but not integer, just use them all
-             neighbors)
-            (t
-             nil)))))
+  (cond ((null howmany)
+         nil) ; use no neighbors
+        (t
+         (when neighbors
+           (let ((len (length neighbors)))
+             (cond ((integerp howmany)
+                    (if (< howmany 1)
+                        nil ; if zero or less, return nil. Degenerate case.
+                        (if (>= howmany len)
+                            neighbors ; just use them all
+                            (let ((fn (make-random-generator neighbors)))
+                              (loop for i below howmany collect
+                                (funcall fn))))))
+                   (howmany ; if true but not integer, just use them all
+                    neighbors)))))))
 
 (defmethod get-downstream ((node gossip-node) srcuid howmany &optional (graphID +default-graphid+))
   (let ((all-neighbors (remove srcuid (neighborhood node graphID) :test 'uid=)))
@@ -1699,7 +1700,7 @@ All the above need to be turned into verb-driven application-handlers because th
 |#
 
 (defmethod pk-singlecast ((msg solicitation) thisnode srcuid)
-  "Send a message to one and only one node. Application message is expected to be in (cdr args) of the solicitation.
+  "Send a message to one and only one node. Application message is expected to be in verb of the solicitation.
   Destination node is expected to be in (car args) of the solicitation.
   Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
   Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
