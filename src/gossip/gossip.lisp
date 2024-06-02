@@ -423,6 +423,9 @@ are in place between nodes.
 (defclass gossip-message-mixin (uid-slot)
   ((timestamp :initarg :timestamp :initform (usec::get-universal-time-usec) :accessor timestamp
               :documentation "Timestamp of message origination")
+   (lr-timestamp :initarg :lr-timestamp :initform (usec::get-universal-time-usec) :accessor lr-timestamp
+                 :documentation "Last-received timestamp. When this message was last received by a node. This is
+                used by nodes who need to know exactly when a given message arrived at their door.")
    (hopcount :initarg :hopcount :initform 0 :accessor hopcount
              :documentation "Number of hops this message has traversed.")
    (pkind :initarg :pkind :initform nil :accessor pkind
@@ -454,6 +457,7 @@ Usually a list whose first element is the ultimate intended destination nodeID."
   (let ((new-msg (make-instance (class-of msg)
                    :uid (uid msg)
                    :timestamp (timestamp msg)
+                   ; :lr-timestamp ; don't copy this
                    :hopcount (hopcount msg)
                    :pkind (pkind msg)
                    :verb (verb msg)
@@ -739,33 +743,33 @@ Usually a list whose first element is the ultimate intended destination nodeID."
                (host-in-nodes hostpair))
              hosts))
 
-(defmethod gossip-dispatcher (node &rest actor-msg)
+(defmethod gossip-dispatcher (node lr-timestamp &rest actor-msg)
   "Extracts gossip-msg from actor-msg and calls deliver-gossip-msg on it"
   (let ((gossip-cmd (first actor-msg)))
     (case gossip-cmd
       (:gossip
        (unless node (error "No node attached to this actor!"))
        (destructuring-bind (srcuid gossip-msg) (cdr actor-msg)
-         (let ((now (usec::get-universal-time-usec)))
-           ; note the message's srcuid and originating-uid (if known) in node's message-timecache
-           (unless (temporary-p node) ; temporary nodes don't keep track of aliveness
-             (when (and srcuid        ; and we don't keep track of the aliveness of temporary nodes
-                        (not (eql 'ac::*master-timer* srcuid)) ; and we don't keep track of the aliveness of the master-timer, because that's an infrastructure actor
-                        (let ((srcnode (lookup-node srcuid)))
-                          (and srcnode
-                               (not (temporary-p srcnode)))))
-               (kvs:relate-unique! (message-timecache node) srcuid now))
-             ; Following assumes originating-uids are never of temporary nodes
-             (when (originating-uid gossip-msg) (kvs:relate-unique! (message-timecache node) (originating-uid gossip-msg) now))))
-         (deliver-gossip-msg gossip-msg node srcuid))))))
+         ; note the message's srcuid and originating-uid (if known) in node's message-timecache
+         (unless (temporary-p node) ; temporary nodes don't keep track of aliveness
+           (when (and srcuid        ; and we don't keep track of the aliveness of temporary nodes
+                      (not (eql 'ac::*master-timer* srcuid)) ; and we don't keep track of the aliveness of the master-timer, because that's an infrastructure actor
+                      (let ((srcnode (lookup-node srcuid)))
+                        (and srcnode
+                             (not (temporary-p srcnode)))))
+             (kvs:relate-unique! (message-timecache node) srcuid lr-timestamp))
+           ; Following assumes originating-uids are never of temporary nodes
+           (when (originating-uid gossip-msg) (kvs:relate-unique! (message-timecache node) (originating-uid gossip-msg) lr-timestamp)))
+         (deliver-gossip-msg gossip-msg node srcuid lr-timestamp))))))
 
 (defmethod make-gossip-actor ((node t))
   (make-instance 'gossip-actor
     :node node
     :fn 
     (lambda (&rest msg)
-      (edebug 6 (ac::current-actor) "received" msg)
-      (apply 'gossip-dispatcher node msg))))
+      (let ((lr-timestamp (usec::get-universal-time-usec))) ; record the moment the actor took it off the queue. NDY: It would be more accurate to record when it entered the queue, but save that for later.
+        (edebug 6 (ac::current-actor) "received" msg)
+        (apply 'gossip-dispatcher node lr-timestamp msg)))))
 
 (defun memoize-node (node)
   "Ensure this node is memoized on *nodes*"
@@ -1249,7 +1253,7 @@ dropped on the floor.
   Doesn't change anything in message or node."
   (declare (ignore srcuid)) ; not using this for acceptance criteria in the general method
   (let ((soluid (uid msg))
-        (current-time (usec::get-universal-time-usec)))
+        (current-time (usec::get-universal-time-usec))) ;;; NDY: Probably should use lr-timestamp for this
     (cond ((> current-time (+ *max-message-age* (timestamp msg))) ; ignore too-old messages
            (values nil :too-old))
           (t
@@ -1357,8 +1361,7 @@ dropped on the floor.
               to
               from)))
 
-(defun locally-dispatch-msg (pkindsym node msg srcuid)
-  "Final dispatcher for messages local to this machine. No validation is done here."
+(defun get-logsym-and-loglevel (msg)
   (let* ((logsym (typecase msg
                    (solicitation :accepted)
                    (interim-reply :interim-reply-accepted)
@@ -1370,16 +1373,22 @@ dropped on the floor.
                      (:accepted 4)
                      (:final-reply-accepted 4)
                      (t nil))))
-    (when (show-debug-p loglevel)
-      (%edebug
-       logsym
-       msg
-       (or (lookup-node srcuid) :oracle)
-       node
-       (pkind msg)))
-    (gossip-handler-case
-     (funcall pkindsym msg node srcuid)
-     (error (c) (edebug 1 :ERROR msg "" node c)))))
+    (values logsym loglevel)))
+
+(defun locally-dispatch-msg (pkindsym node msg srcuid)
+  "Final dispatcher for messages local to this machine. No validation is done here."
+  (when (not (eql :pk-singlecast pkindsym)) ; in this special case, don't show an :accepted log message. Let #'pk-singlecast do the log msg.
+    (multiple-value-bind (logsym loglevel) (get-logsym-and-loglevel msg)
+      (when (show-debug-p loglevel)
+        (%edebug
+         logsym
+         msg
+         (or (lookup-node srcuid) :oracle)
+         node
+         (pkind msg)))))
+  (gossip-handler-case
+   (funcall pkindsym msg node srcuid)
+   (error (c) (edebug 1 :ERROR msg "" node c))))
 
 (defmethod maybe-locally-receive-msg ((msg system-async) (node abstract-gossip-node) srcuid)
   (multiple-value-bind (pkindsym failure-reason) (accept-msg? msg node srcuid)
@@ -1695,10 +1704,27 @@ All the above need to be turned into verb-driven application-handlers because th
   Message will percolate along the graph until it reaches destination node, at which point it stops percolating.
   Every intermediate node will have the message forwarded through it but message will not be otherwise acted upon by intermediate nodes.
   Destination node is not expected to reply (at least not with builtin gossip-style replies)."
-  (if (uid= (uid thisnode) (destination-uid msg))
-      (handoff-to-application-handlers thisnode msg srcuid)
-      ; thisnode becomes new source for forwarding purposes
-      (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))
+  (multiple-value-bind (logsym loglevel) (get-logsym-and-loglevel msg) ; for this particular pkind, we have to make the accept/reject log message here
+    (if (uid= (uid thisnode) (destination-uid msg))
+        (progn
+          (when (show-debug-p loglevel)
+            (%edebug
+             logsym
+             msg
+             (or (lookup-node srcuid) :oracle)
+             thisnode
+             (pkind msg)))
+          (handoff-to-application-handlers thisnode msg srcuid))
+        (progn
+          (when (show-debug-p loglevel)
+            (%edebug
+             :IGNORE
+             msg
+             (or (lookup-node srcuid) :oracle)
+             thisnode
+             :NOT-FOR-ME))
+          ; thisnode becomes new source for forwarding purposes
+          (forward msg thisnode (get-downstream thisnode srcuid (forward-to msg) (graphID msg)))))))
 
 (defmethod pk-multicast ((msg solicitation) thisnode srcuid)
   "Announce a message to the collective. Application message is expected to be in args of the solicitation.
@@ -2358,8 +2384,9 @@ All the above need to be turned into verb-driven application-handlers because th
 
 ;; ------------------------------------------------------------------------------
 
-(defmethod deliver-gossip-msg (gossip-msg (node proxy-gossip-node) srcuid)
+(defmethod deliver-gossip-msg (gossip-msg (node proxy-gossip-node) srcuid lr-timestamp)
   "This node is a standin for a remote node. Transmit message across network."
+  (declare (ignore lr-timestamp)) ;;; NDY: for now
   (gossip/transport:transmit *transport*
                              (real-address node)
                              (real-port node) 
@@ -2371,17 +2398,19 @@ All the above need to be turned into verb-driven application-handlers because th
                                                  *actual-tcp-gossip-port*
                                                  gossip-msg))))  ; message (payload)
 
-(defmethod deliver-gossip-msg (gossip-msg (node gossip-node) srcuid)
+(defmethod deliver-gossip-msg (gossip-msg (node gossip-node) srcuid lr-timestamp)
   (setf gossip-msg (copy-message gossip-msg)) ; must copy before incrementing hopcount because we can't
   ;  modify the original without affecting other threads.
   (incf (hopcount gossip-msg))
+  (setf (lr-timestamp gossip-msg) lr-timestamp)
   ; Remember the srcuid that sent me this message, because that's where reply (if any) might be forwarded to
   (maybe-locally-receive-msg gossip-msg node srcuid))
 
-(defmethod deliver-gossip-msg ((gossip-msg system-async) (node abstract-gossip-node) srcuid)
+(defmethod deliver-gossip-msg ((gossip-msg system-async) (node abstract-gossip-node) srcuid lr-timestamp)
   (setf gossip-msg (copy-message gossip-msg)) ; must copy before incrementing hopcount because we can't
   ;  modify the original without affecting other threads.
   (incf (hopcount gossip-msg))
+  (setf (lr-timestamp gossip-msg) lr-timestamp)
   ; Remember the srcuid that sent me this message, because that's where reply (if any) might be forwarded to
   ;  (although system-async messages never expect replies).
   (maybe-locally-receive-msg gossip-msg node srcuid))
