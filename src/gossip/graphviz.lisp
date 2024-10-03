@@ -40,8 +40,14 @@ an error when it fails, so we have to wrap an ignore-errors around the call.
   (string-downcase (symbol-name (gensym prefix))))
 
 (defun temp-folder ()
+  (uiop:default-temporary-directory))
+
+#| ; works but UIOP is simpler
+(defun temp-folder ()
   #+LISPWORKS
   (hcl:get-temp-directory)
+  #+SBCL
+  (sb-impl::get-temporary-directory)
   #+CLOZURE
   (let* ((ptr (CCL:EXTERNAL-CALL
                "tempnam"
@@ -53,6 +59,7 @@ an error when it fails, so we have to wrap an ignore-errors around the call.
         (tempname (ccl::%get-cstring ptr)))
     (CCL:EXTERNAL-CALL "free" :ADDRESS PTR :VOID)
     (directory-namestring tempname)))
+|#
 
 (defun make-temp-dotfile ()
   (let* ((name (random-name "DOTFILE"))
